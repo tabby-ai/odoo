@@ -1,0 +1,25 @@
+# Translation for Tabby Payment provider module
+# This file contains the translation of the following modules:
+# 	* payment_tabby
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tabby Payment Provider 1.0.0\n"
+"Last-Translator: Serhii Balitskiy <sergey.balitsky@tabby.ai>\n"
+"Language-Team: Translations <translations@tabby.ai>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-02-13T13:07:12+00:00\n"
+"PO-Revision-Date: 2026-02-13T13:07:12+00:00\n"
+
+#. module: payment_tabby
+#: model:payment.method,name:payment_tabby.payment_method_tabby_installments
+msgid "Pay later with Tabby"
+msgstr "ﺍﺪﻔﻋ ﻼﺤﻗًﺍ ﻊﺑﺭ ﺕﺎﺒﻳ"
+
+#. module: payment_tabby
+#. odoo-python
+#: code:addons/payment_tabby/models/payment_transaction.py:0
+msgid "Sorry, Tabby is unable to approve this purchase. Please use an alternative payment method for your order."
+msgstr "نأسف، تابي غير قادرة على الموافقة على هذه العملية. الرجاء استخدام طريقة دفع أخرى."

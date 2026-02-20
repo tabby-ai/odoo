@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Tabby Promo widget on product page -->
+        <template id="tabby_product_widget" name="Tabby Product Widget" inherit_id="website_sale.product">
+            <xpath expr="//div[hasclass('o_wsale_product_details_content_section_price')]" position="after">
+                <t t-set="tabby_provider" t-value="request.env['payment.provider'].sudo().search([('code', '=', 'tabby'), ('state', 'in', ['enabled', 'test'])], limit=1)"/>
+                <t t-if="tabby_provider">
+                    <t t-set="tabby_config" t-value="tabby_provider.get_tabby_promo_config()"/>
+                
+                    <div id="tabbyPromo" 
+                        class="tabby-product-widget mt-3"
+                        t-att-data-tabby-price="combination_info['price']"
+                        t-att-data-tabby-currency="website.currency_id.name">
+                    </div>
+                    <script type="text/javascript">
+                        document.addEventListener('DOMContentLoaded', function() {
+                            const tabbyEl = document.getElementById('tabbyPromo');
+                            if (tabbyEl &amp;&amp; window.TabbyPromo) {
+                                const config = <t t-out="json.dumps(tabby_config)"/>;
+                                config.price = tabbyEl.dataset.tabbyPrice;
+                                config.currency = tabbyEl.dataset.tabbyCurrency;
+                                config.source = 'product';
+                                new window.TabbyPromo(config);
+                            }
+                        });
+                    </script>
+                    <script src="https://checkout.tabby.ai/tabby-promo.js"/>
+                </t>
+            </xpath>
+        </template>
+        <!-- Tabby Promo widget on cart page -->
+        <template id="tabby_cart_widget" name="Tabby Cart Widget" inherit_id="website_sale.total">
+            <xpath expr="//div[contains(@t-attf-class, 'o_cart_total')]" position="after">
+                <t t-set="tabby_provider" t-value="request.env['payment.provider'].sudo().search([('code', '=', 'tabby'), ('state', 'in', ['enabled', 'test'])], limit=1)"/>
+                
+                <t t-if="tabby_provider and website_sale_order">
+                    <t t-set="tabby_config" t-value="tabby_provider.get_tabby_promo_config()"/>
+                    
+                    <div id="tabbyPromo" 
+                        class="tabby-cart-widget mb-3"
+                        t-att-data-tabby-price="website_sale_order.amount_total"
+                        t-att-data-tabby-currency="website_sale_order.currency_id.name">
+                    </div>
+                    
+                    <script type="text/javascript">
+                        document.addEventListener('DOMContentLoaded', function() {
+                            const tabbyEl = document.getElementById('tabbyPromo');
+                            if (tabbyEl &amp;&amp; window.TabbyPromo) {
+                                const config = <t t-out="json.dumps(tabby_config)"/>;
+                                config.price = tabbyEl.dataset.tabbyPrice;
+                                config.currency = tabbyEl.dataset.tabbyCurrency;
+                                config.source = 'cart';
+                                new window.TabbyPromo(config);
+                            }
+                        });
+                    </script>
+                    <script src="https://checkout.tabby.ai/tabby-promo.js"/>
+                </t>
+            </xpath>
+        </template>
+    </data>
+</odoo>

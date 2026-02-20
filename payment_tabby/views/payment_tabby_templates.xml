@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <template id="payment_method_description" inherit_id="payment.method_form">
+            <xpath expr="//div[@name='o_payment_inline_form']" position="inside">
+
+                <t t-if="provider_sudo.code == 'tabby'">
+                    <div id="installmentsCard" style="cursor: pointer;">
+                    </div>
+                    <t t-set="current_order" t-value="website_sale_order"/>
+                    <script type="text/javascript">
+                        document.addEventListener('DOMContentLoaded', function() {
+                            const tabbyCardEl = document.getElementById('installmentsCard');
+                            if (tabbyCardEl &amp;&amp; window.TabbyCard) {
+                                const config = <t t-out="json.dumps(provider_sudo.get_tabby_card_config(current_order))"/> ;
+                                new window.TabbyCard(config);
+                            }
+                        });
+                        </script>
+                    <script src="https://checkout.tabby.ai/tabby-card.js"/>
+                </t>
+            </xpath>
+            <xpath expr="//t[@t-set='hide_secured_by']" position="attributes">
+                <attribute name="t-value" separator=" " add="or provider_sudo.code == 'tabby'"/>
+            </xpath>
+        </template>
+    </data>
+</odoo>
