@@ -49,17 +49,23 @@ class PaymentProvider(models.Model):
         if self.code != 'tabby':
             return {}
         lang = self.env.lang[:2]
-        return {
-            'selector': '#tabbyPromo',
-            'merchantCode': self.get_merchant_code_from_currency(),
-            'publicKey': self.tabby_public_key,
-            'shouldInheritBg': True,
-            'lang': lang or 'en',
-            'email': self.env.user.partner_id.email or '',
-            'phone': self.env.user.partner_id.phone or '',
-            'source': 'product',
-            'sourcePlugin': 'odoo',
-        }
+        result = {}
+        try:
+            result = {
+                'selector': '#tabbyPromo',
+                'merchantCode': self.get_merchant_code_from_currency(),
+                'publicKey': self.tabby_public_key,
+                'shouldInheritBg': True,
+                'lang': lang or 'en',
+                'email': self.env.user.partner_id.email or '',
+                'phone': self.env.user.partner_id.phone or '',
+                'source': 'product',
+                'sourcePlugin': 'odoo',
+            }
+        except ValidationError:
+            pass
+
+        return result
 
     def get_tabby_card_config(self, order):
         """ Get Tabby card widget configuration. """
