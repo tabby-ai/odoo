@@ -7,7 +7,6 @@ from ..models.dd import DataDog
 _logger = logging.getLogger(__name__)
 
 class TabbyController(http.Controller):
-    
     @http.route('/payment/tabby/cancel', type='http', auth='public', methods=['GET'], csrf=False, website=True)
     def tabby_cancel(self, **kwargs):
         """ Handle Tabby payment cancel notifications. """
@@ -21,7 +20,7 @@ class TabbyController(http.Controller):
         if not tx_sudo:
             DataDog.ddlog(self.env, 'error', 'No transaction found on cancel redirect', data=kwargs);
             return request.redirect('/shop')
-        
+
         # cancel only draft/pending transactions
         if tx_sudo.state in ('draft', 'pending') and tx_sudo.sale_order_ids:
             tx_sudo._set_canceled("Payment was canceled by the customer via Tabby.")
@@ -49,7 +48,7 @@ class TabbyController(http.Controller):
         if not tx_sudo:
             DataDog.ddlog(self.env, 'error', 'No transaction found on failure redirect', data=kwargs);
             return request.redirect('/shop')
-        
+
         if tx_sudo.state in ('draft', 'pending') and tx_sudo.sale_order_ids:
             tx_sudo._set_error("Payment is rejected by Tabby")
 
@@ -76,7 +75,7 @@ class TabbyController(http.Controller):
         if not tx_sudo:
             DataDog.ddlog(self.env, 'error', 'No transaction found on success redirect', data=kwargs);
             return request.redirect('/shop')
-        
+
         if tx_sudo.state in ['draft', 'pending']:
             tx_sudo._tabby_update_payment_status()
 
@@ -108,4 +107,4 @@ class TabbyController(http.Controller):
             tx_sudo._tabby_update_payment_status()
 
         return {"status": "success"}
-        
+

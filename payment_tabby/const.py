@@ -22,3 +22,5 @@ DEFAULT_COUNTRY = 'AE'
 DEFAULT_LANGUAGE = 'en'
 DEFAULT_TERMS_URL = "https://www.tabby.ai/terms-and-conditions"
 DEFAULT_PRIVACY_URL = "https://www.tabby.ai/privacy-policy"
+
+TABBY_DEV_DOMAINS = False

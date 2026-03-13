@@ -27,7 +27,7 @@ class DataDog:
 
         hostname = cls.get_hostname(env)
         module_version = cls.get_module_version(env)
-        
+
         log_entry = {
             "status": status,
             "message": message,
@@ -41,7 +41,7 @@ class DataDog:
         if exception:
             log_entry["error.kind"] = getattr(exception, 'code', type(exception).__name__)
             log_entry["error.message"] = str(exception)
-        
+
         if data:
             log_entry["data"] = data
 

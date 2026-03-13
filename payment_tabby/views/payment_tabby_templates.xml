@@ -17,7 +17,7 @@
                             }
                         });
                         </script>
-                    <script src="https://checkout.tabby.ai/tabby-card.js"/>
+                    <script t-att-src="provider_sudo.get_tabby_card_script_url()"/>
                 </t>
             </xpath>
             <xpath expr="//t[@t-set='hide_secured_by']" position="attributes">

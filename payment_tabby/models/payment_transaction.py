@@ -13,10 +13,10 @@ class PaymentTransaction(models.Model):
     def _get_specific_rendering_values(self, processing_values):
         """ Return Tabby redirect URL for template rendering. """
         res = super()._get_specific_rendering_values(processing_values)
-        
+
         if self.provider_code != 'tabby':
             return res
-        
+
         session = self._tabby_create_session(processing_values)
 
         if isinstance(session, dict) and session.get('status') == 'created':
@@ -34,12 +34,12 @@ class PaymentTransaction(models.Model):
             res['api_url'] = None
             self._set_error(_("Sorry, Tabby is unable to approve this purchase. Please use an alternative payment method for your order."));
             return res
-        
+
         return res
-    
+
     def _tabby_create_session(self, processing_values):
         """ Call Tabby API to create payment session. """
-        api = TabbyAPI.TabbyAPI(provider=self.provider_id)
+        api = TabbyAPI.TabbyAPI(provider=self.provider_id, transaction=self)
         return api.createSession(self._get_tabby_session_data(processing_values))
 
     def _get_tabby_session_data(self, processing_values):
@@ -153,8 +153,8 @@ class PaymentTransaction(models.Model):
             'captured': int(line.qty_invoiced),
             'shipped': int(line.qty_delivered) if hasattr(line, 'qty_delivered') else 0,
             'refunded': int(sum(
-                inv_line.quantity 
-                for inv_line in line.invoice_lines 
+                inv_line.quantity
+                for inv_line in line.invoice_lines
                 if inv_line.move_id.move_type == 'out_refund' and inv_line.move_id.state == 'posted'
             )),
         }
@@ -222,7 +222,7 @@ class PaymentTransaction(models.Model):
 
         self.ensure_one()
 
-        api = TabbyAPI.TabbyAPI(provider=self.provider_id)
+        api = TabbyAPI.TabbyAPI(provider=self.provider_id, transaction=self)
 
         response = api.capture(
             self.source_transaction_id.provider_reference if self.source_transaction_id else self.provider_reference,
@@ -269,7 +269,7 @@ class PaymentTransaction(models.Model):
 
         self.ensure_one()
 
-        api = TabbyAPI.TabbyAPI(provider=self.provider_id)
+        api = TabbyAPI.TabbyAPI(provider=self.provider_id, transaction=self)
 
         response = api.refund(
             auth_txn.provider_reference,
@@ -291,16 +291,15 @@ class PaymentTransaction(models.Model):
 
         self.ensure_one()
 
-        api = TabbyAPI.TabbyAPI(provider=self.provider_id)
+        api = TabbyAPI.TabbyAPI(provider=self.provider_id, transaction=self)
 
         response = api.close(self.source_transaction_id.provider_reference)
 
         self._process('tabby', {'type': 'void', 'response': response});
 
-         
     def _tabby_update_payment_status(self):
         """ Retrieve payment status from Tabby API. """
-        api = TabbyAPI.TabbyAPI(provider=self.provider_id)
+        api = TabbyAPI.TabbyAPI(provider=self.provider_id, transaction=self)
         payment = api.get_payment(self.provider_reference)
         return self._process('tabby', {'type': 'update', 'response': payment})
 
@@ -311,7 +310,7 @@ class PaymentTransaction(models.Model):
 
         if data.get('type') == 'void':
             return None
-        
+
         payment = data.get('response')
 
         amount = {
@@ -340,7 +339,7 @@ class PaymentTransaction(models.Model):
     def _extract_reference(self, provider_code, payment_data):
         if provider_code != 'tabby':
             return super()._extract_reference(provider_code, payment_data)
-        
+
         return payment_data.get('response', {}).get('meta', {}).get('txref')
 
     def _apply_updates(self, payment_data):
@@ -394,7 +393,7 @@ class PaymentTransaction(models.Model):
         elif status == 'CLOSED':
             if self.state in ['draft', 'pending', 'authorized']:
                 self._set_done()
-                _logger.info('Transaction %s marked as done.', self.reference)        
+                _logger.info('Transaction %s marked as done.', self.reference)
                 self.env.ref('payment.cron_post_process_payment_tx')._trigger()
         elif status == 'REJECTED':
             self._set_error()
@@ -402,7 +401,7 @@ class PaymentTransaction(models.Model):
         else:
             self._set_error()
             _logger.error('Transaction %s marked as error due to unknown status: %s', self.reference, status)
-        return True    
+        return True
 
     @api.model
     def _cron_tabby_check_pending(self):

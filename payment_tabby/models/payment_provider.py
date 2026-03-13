@@ -30,13 +30,13 @@ class PaymentProvider(models.Model):
         selection_add=[('test', None)],
         ondelete={'test': 'set default'}
     )
-    
+
     tabby_public_key = fields.Char(
         string="Tabby Public Key",
         help="Public key for Tabby API",
         groups="base.group_system"
     )
-    
+
     tabby_secret_key = fields.Char(
         string="Tabby Secret Key",
         help="Secret key for Tabby API",
@@ -82,7 +82,7 @@ class PaymentProvider(models.Model):
             'price': str(order.amount_total),
             'lang': self.env.lang or 'en',
             'shouldInheritBg': True,
-        }   
+        }
 
     def _get_supported_currencies(self):
         """Override to limit the dropdown to a specific list of currencies."""
@@ -99,7 +99,7 @@ class PaymentProvider(models.Model):
         if self.code != 'tabby':
             return super()._get_default_payment_method_codes()
         return list(const.PAYMENT_METHODS.values())
-        
+
     def _get_payment_method_codes(self):
         """ Override of `payment` to return supported payment method codes. """
         if self.code == 'tabby':
@@ -139,10 +139,10 @@ class PaymentProvider(models.Model):
         module = self.env['ir.module.module'].sudo().search(
             [('name', '=', 'payment_tabby')], limit=1)
         return module.installed_version or '1.0'
-    
+
     def write(self, vals):
         res = super(PaymentProvider, self).write(vals)
-        
+
         for provider in self:
             if provider.code == 'tabby':
                 if 'tabby_public_key' in vals or 'tabby_secret_key' in vals or 'state' in vals:
@@ -151,9 +151,9 @@ class PaymentProvider(models.Model):
                     else:
                         self._unregister_webhooks()
                     DataDog.ddlog(self.env, 'info', f'Tabby configuration updated for {provider.name}')
-        
+
         return res
-    
+
     def _register_webhooks(self):
         url = f"{self.env['ir.config_parameter'].sudo().get_param('web.base.url')}/payment/tabby/webhook"
         enabled = self.available_currency_ids.mapped('name')
@@ -195,3 +195,17 @@ class PaymentProvider(models.Model):
 
         if re.match(r'^sk_(test_)?[\da-f]{8}\-[\da-f]{4}\-[\da-f]{4}\-[\da-f]{4}\-[\da-f]{12}$', self.tabby_secret_key) is None:
             raise ValidationError("Invalid Tabby Secret Key format. Must be: sk_[test_]xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
+
+    def get_tabby_promo_script_url(self):
+        currency = request.website.currency_id.name
+        country_code = next((k for k, v in const.COUNTRY_MAP.items() if v == currency), None)
+
+        api = TabbyAPI(provider=self, country_code=country_code)
+        return f"https://checkout.{api.get_tabby_domain(country_code)}/tabby-promo.js"
+
+    def get_tabby_card_script_url(self):
+        currency = request.website.currency_id.name
+        country_code = next((k for k, v in const.COUNTRY_MAP.items() if v == currency), None)
+
+        api = TabbyAPI(provider=self, country_code=country_code)
+        return f"https://checkout.{api.get_tabby_domain(country_code)}/tabby-card.js"

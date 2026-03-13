@@ -1,4 +1,3 @@
-
 import json
 import logging
 import pprint
@@ -15,12 +14,26 @@ from odoo.addons.payment import utils as payment_utils
 _logger = logging.getLogger(__name__)
 
 class TabbyAPI:
-    BASE_URL = const.API_BASE_URL
 
-    def __init__(self, provider):
+    def __init__(self, provider, country_code = None, transaction = None):
         self.public_key = provider.tabby_public_key
         self.secret_key = provider.tabby_secret_key
         self.env = provider.env
+        self.country_code = country_code or 'AE'
+
+        if transaction:
+            self.country_code = provider.get_merchant_code_from_currency(transaction.currency_id.name)
+
+    def get_tabby_domain(self, mcode):
+        d1 = 'dev' if const.TABBY_DEV_DOMAINS else ('sa' if mcode == 'SA' else 'ai')
+        d2 = 'tabbysa' if (const.TABBY_DEV_DOMAINS and mcode == 'SA') else 'tabby'
+        return f"{d2}.{d1}"
+
+    def _get_base_api_url(self, mcode):
+        return f"https://api.{self.get_tabby_domain(mcode)}/api/"
+
+    def _get_endpoint_url(self, mcode, endpoint):
+        return f"{self._get_base_api_url(mcode)}{endpoint}"
 
     def _get_headers(self, mcode=None):
         headers = {
@@ -36,12 +49,12 @@ class TabbyAPI:
         if not self.secret_key:
             return {'status':'error', 'message': f"No secret key configured"}
 
-        url = f"{self.BASE_URL}{endpoint}"
+        url = self._get_endpoint_url(mcode or self.country_code, endpoint)
         headers = self._get_headers(mcode)
 
         if (method not in ['POST', 'GET', 'PUT', 'DELETE']):
             raise ValueError("Unsupported HTTP method")
-        
+
         try:
             response = requests.request(method, url, headers=headers, data=json.dumps(data) if data else None, timeout=10)
             response.raise_for_status()
@@ -77,7 +90,7 @@ class TabbyAPI:
             }
             DataDog.ddlog(self.env, 'info', 'api call', data=log_data);
             return {"status": "error", "message": str(e)}
-        
+
         try:
             return response.json()
         except json.JSONDecodeError:
