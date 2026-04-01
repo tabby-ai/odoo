@@ -126,7 +126,7 @@ class PaymentTransaction(models.Model):
 
         ho = self.env['sale.order'].search(domain, limit=10, order='date_order desc')
 
-        return [self.get_order_history_order_object(o) for o in ho]
+        return [self.get_order_history_order_object(o) for o in ho if const.ORDER_STATE_MAP.get(o.state)]
 
     def get_order_history_order_object(self, order):
         transaction = order.get_portal_last_transaction()
