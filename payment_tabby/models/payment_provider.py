@@ -70,17 +70,20 @@ class PaymentProvider(models.Model):
     def get_tabby_card_config(self, order):
         """ Get Tabby card widget configuration. """
         self.ensure_one()
-        if self.code != 'tabby':
+        if self.code != 'tabby' or not order:
             return {}
-        if not order:
+        try:
+            merchant_code = self.get_merchant_code_from_currency(order.currency_id.name)
+        except ValidationError:
+            # Order currency is not supported by Tabby (e.g. USD); hide the widget.
             return {}
         return {
             'selector': '#installmentsCard',
-            'merchantCode': 'AE',
+            'merchantCode': merchant_code,
             'publicKey': self.tabby_public_key,
             'currency': order.currency_id.name,
             'price': str(order.amount_total),
-            'lang': self.env.lang or 'en',
+            'lang': (self.env.lang or 'en')[:2],
             'shouldInheritBg': True,
         }
 
@@ -186,15 +189,26 @@ class PaymentProvider(models.Model):
 
     @api.constrains('tabby_public_key', 'tabby_secret_key', 'state')
     def _check_keys_on_save(self):
-
-        if self.state == 'disabled':
-            return
-
-        if re.match(r'^pk_(test_)?[\da-f]{8}\-[\da-f]{4}\-[\da-f]{4}\-[\da-f]{4}\-[\da-f]{12}$', self.tabby_public_key) is None:
-            raise ValidationError("Invalid Tabby Public Key format. Must be: pk_[test_]xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
-
-        if re.match(r'^sk_(test_)?[\da-f]{8}\-[\da-f]{4}\-[\da-f]{4}\-[\da-f]{4}\-[\da-f]{12}$', self.tabby_secret_key) is None:
-            raise ValidationError("Invalid Tabby Secret Key format. Must be: sk_[test_]xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
+        # `state` is in the watched fields, so this constraint fires for ANY
+        # provider when its state changes (e.g. enabling Wire Transfer or
+        # Cash on Delivery). Guard against non-Tabby providers and against
+        # recordsets of more than one record (re.match() on False raises
+        # TypeError, which breaks enabling other payment providers).
+        pk_pattern = r'^pk_(test_)?[\da-f]{8}\-[\da-f]{4}\-[\da-f]{4}\-[\da-f]{4}\-[\da-f]{12}$'
+        sk_pattern = r'^sk_(test_)?[\da-f]{8}\-[\da-f]{4}\-[\da-f]{4}\-[\da-f]{4}\-[\da-f]{12}$'
+        for rec in self:
+            if rec.code != 'tabby' or rec.state == 'disabled':
+                continue
+            if not rec.tabby_public_key or re.match(pk_pattern, rec.tabby_public_key) is None:
+                raise ValidationError(_(
+                    "Invalid Tabby Public Key format. "
+                    "Must be: pk_[test_]xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                ))
+            if not rec.tabby_secret_key or re.match(sk_pattern, rec.tabby_secret_key) is None:
+                raise ValidationError(_(
+                    "Invalid Tabby Secret Key format. "
+                    "Must be: sk_[test_]xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                ))
 
     def get_tabby_promo_script_url(self):
         currency = request.website.currency_id.name

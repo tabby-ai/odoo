@@ -45,7 +45,9 @@ class PaymentTransaction(models.Model):
     def _get_tabby_session_data(self, processing_values):
         """ Prepare data for Tabby session creation. """
         order = self.sale_order_ids[:1]
-        lang = self.env.context.get('lang')[:2]
+        # Guard against None — context.lang may be unset in some flows
+        # (e.g. cron-triggered or REST API calls), which would crash on [:2].
+        lang = (self.env.context.get('lang') or 'en')[:2]
         return {
             'lang': lang if lang in ['en', 'ar'] else 'en',
             'merchant_code': self.provider_id.get_merchant_code_from_currency(order.currency_id.name),
