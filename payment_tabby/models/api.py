@@ -156,9 +156,19 @@ class TabbyAPI:
         return self.secret_key.startswith('sk_test_')
 
     def get_webhooks(self, mcode):
+        """ Fetch existing webhooks for a merchant code. Returns a list of webhook
+        dicts on success, or [] if the API returned an error envelope (e.g.
+        {"status": "error", ...} from a transport failure or auth issue). The
+        previous behaviour of wrapping the error dict into a list let it slip
+        past the caller's `isinstance(hooks, dict)` guard and caused a KeyError
+        on h['url'] downstream. """
         webhooks = self._request("GET", f"v1/webhooks", mcode=mcode)
         if not isinstance(webhooks, list):
-            webhooks = [webhooks]
+            _logger.warning(
+                "Tabby get_webhooks for mcode %s did not return a list: %s",
+                mcode, webhooks,
+            )
+            return []
         return webhooks
 
     def register_webhook(self, webhook_url, mcode):
