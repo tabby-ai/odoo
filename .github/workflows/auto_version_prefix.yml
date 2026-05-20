@@ -62,6 +62,19 @@ jobs:
             git add "**/__manifest__.py"
             git commit -m "chore: auto-prefix manifest versions with Odoo $BRANCH_NAME [skip ci]"
             git push origin HEAD:${{ github.ref_name }}
+            # 2. Extract the finalized version string from the manifest
+            # This looks for the version line and pulls out just the numbers (e.g., 19.0.1.4.2)
+            FULL_VERSION=$(grep -E "['\"]version['\"]" $(find . -name "__manifest__.py" | head -n 1) | grep -oE "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
+            echo "Extracted full version for tagging: v$FULL_VERSION"
+            
+            # 3. Check if this exact Git tag already exists to prevent deployment crashes
+            if ! git rev-parse "v$FULL_VERSION" >/dev/null 2>&1; then
+              echo "Creating new Git tag: v$FULL_VERSION"
+              git tag -a "v$FULL_VERSION" -m "Release version v$FULL_VERSION for Odoo ${{ github.ref_name }}"
+              git push origin "v$FULL_VERSION"
+            else
+              echo "Tag v$FULL_VERSION already exists. Skipping tag creation."
+            fi
           else
             echo "No manifest adjustments needed."
           fi
