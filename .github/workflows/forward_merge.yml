@@ -48,20 +48,26 @@ jobs:
             # 3. Find and rewrite the version in the manifest file natively on this branch
             find . -name "__manifest__.py" | while read -r manifest; do
               echo "Fixing prefix for file: $manifest"
-              python3 -c "
-            import re
-            with open('$manifest', 'r') as f:
-                content = f.read()
+              python3 << 'EOF'
+import re
+import os
 
-            # Captures structural groups securely
-            pattern = r\"(['\\\" ]version['\\\" ]\s*:\s*['\\\"])(?:\d+\.\d+\.)?(\d+\.\d+\.\d+)(['\\\"])\"
+manifest_path = os.environ.get('MANIFEST_FILE')
+branch_version = os.environ.get('BRANCH_VERSION')
 
-            # Uses \g<1> to safely separate the group index from numeric text
-            updated_content = re.sub(pattern, r\"\g<1>$branch.\2\3\", content)
+with open(manifest_path, 'r') as f:
+    content = f.read()
 
-            with open('$manifest', 'w') as f:
-                f.write(updated_content)
-            "
+# Captures structural groups securely
+pattern = r"(['\" ]version['\" ]\s*:\s*['\"])(?:\d+\.\d+\.)?(\d+\.\d+\.\d+)(['\"])"
+
+# Uses \g<1> to safely separate the group index from numeric text
+updated_content = re.sub(pattern, rf"\g<1>{branch_version}.\2\3", content)
+
+with open(manifest_path, 'w') as f:
+    f.write(updated_content)
+EOF
+
             done
             
             # 4. Commit and push the manifest adjustments back to the branch
