@@ -1,54 +1,99 @@
-name: Forward Merge Master to Odoo Branches
+name: Unified Odoo Release Automation
 
 on:
   push:
     branches:
-      - master  # Or 'main' depending on your default branch name
+      - master  # Adjust to 'main' if that is your primary branch name
     paths:
-      - '**/__manifest__.py'  # Triggers ONLY when the manifest is updated
+      - '**/__manifest__.py'
 
 jobs:
-  forward_merge:
+  merge_prefix_tag:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetches all history and branches
+          fetch-depth: 0
 
-      - name: Configure Git
+      - name: Configure Git Bot
         run: |
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@://github.com"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Merge Master into Odoo Branches
+      - name: Process Odoo Releases
         run: |
-          # Define the target Odoo branches you actively support
           ODOO_BRANCHES=("17.0" "18.0" "19.0")
-          
-          # Capture current commit hash from master
           MASTER_SHA=$(git rev-parse HEAD)
-          echo "New master version commit: $MASTER_SHA"
+          echo "Source master commit to merge: $MASTER_SHA"
 
           for branch in "${ODOO_BRANCHES[@]}"; do
-            echo "----------------------------------------"
-            echo "Processing target branch: $branch"
-            echo "----------------------------------------"
+            echo "========================================"
+            echo "🚀 STARTING PROCESSING FOR ODOO $branch"
+            echo "========================================"
             
-            # Checkout the target Odoo branch
-            git checkout $branch
-            git pull origin $branch
+            # 1. Switch directly to the release branch
+            git checkout "$branch"
+            git pull origin "$branch"
             
-            # Merge master into the Odoo branch. 
-            # -Xtheirs favors master's files, but you can change this depending on conflict preferences.
-            if git merge $MASTER_SHA -m "chore: merge master updates into $branch [skip ci]" -X theirs; then
-              echo "Merge successful. Pushing to origin..."
-              git push origin $branch
-            else
-              echo "CONFLICT DETECTED on branch $branch!"
-              echo "Skipping automated push for $branch. Manual resolution required."
+            # 2. Merge master into the release branch
+            if ! git merge "$MASTER_SHA" -m "chore: merge master updates into $branch" -X theirs; then
+              echo "❌ CONFLICT DETECTED on branch $branch! Skipping automation."
               git merge --abort
+              continue
             fi
+            
+            # 3. Find and rewrite the version in the manifest file natively
+            find . -name "__manifest__.py" | while read -r manifest; do
+              echo "Fixing prefix for file: $manifest"
+              
+              # Pass variables directly inline into Python subshell
+              MANIFEST_FILE="$manifest" BRANCH_VERSION="$branch" python3 -c "
+          import re
+          import os
+
+          manifest_path = os.environ.get('MANIFEST_FILE')
+          branch_version = os.environ.get('BRANCH_VERSION')
+
+          with open(manifest_path, 'r') as f:
+              content = f.read()
+
+          # Captures structural groups securely
+          pattern = r\"(['\\\" ]version['\\\" ]\s*:\s*['\\\"])(?:\d+\.\d+\.)?(\d+\.\d+\.\d+)(['\\\"])\"
+
+          # Uses \g<1> to safely separate the group index from numeric text
+          updated_content = re.sub(pattern, rf\"\g<1>{branch_version}.\2\3\", content)
+
+          with open(manifest_path, 'w') as f:
+              f.write(updated_content)
+          "
+            done
+            
+            # 4. Commit and push the manifest adjustments back to the branch
+            if [[ -n "$(git status --porcelain)" ]]; then
+              git add "**/__manifest__.py"
+              git commit --amend --no-edit 
+              echo "Pushing changes to origin/$branch..."
+              git push origin HEAD:"$branch" --force-with-lease
+            else
+              echo "No manifest text changes needed, pushing baseline merge..."
+              git push origin HEAD:"$branch"
+            fi
+            
+            # 5. Extract the full prefixed version string and create the Git tag
+            MANIFEST_FILE=$(find . -name "__manifest__.py" | head -n 1)
+            FULL_VERSION=$(grep -E "['\"]version['\"]" "$MANIFEST_FILE" | grep -oE "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
+            echo "Resolved runtime version string: v$FULL_VERSION"
+            
+            if ! git rev-parse "v$FULL_VERSION" >/dev/null 2>&1; then
+              echo "Creating and pushing git tag v$FULL_VERSION..."
+              git tag -a "v$FULL_VERSION" -m "Automated release v$FULL_VERSION for Odoo $branch"
+              git push origin "v$FULL_VERSION"
+            else
+              echo "Tag v$FULL_VERSION already exists on remote server. Skipping."
+            fi
+            
           done
+
