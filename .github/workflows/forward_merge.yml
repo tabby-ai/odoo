@@ -51,24 +51,24 @@ jobs:
               
               # Pass variables directly inline into Python subshell
               MANIFEST_FILE="$manifest" BRANCH_VERSION="$branch" python3 -c "
-              import re
-              import os
+          import re
+          import os
 
-              manifest_path = os.environ.get('MANIFEST_FILE')
-              branch_version = os.environ.get('BRANCH_VERSION')
+          manifest_path = os.environ.get('MANIFEST_FILE')
+          branch_version = os.environ.get('BRANCH_VERSION')
 
-              with open(manifest_path, 'r') as f:
-                  content = f.read()
+          with open(manifest_path, 'r') as f:
+              content = f.read()
 
-              # Captures structural groups securely
-              pattern = r\"(['\\\" ]version['\\\" ]\s*:\s*['\\\"])(?:\d+\.\d+\.)?(\d+\.\d+\.\d+)(['\\\"])\"
+          # Captures structural groups securely
+          pattern = r\"(['\\\" ]version['\\\" ]\s*:\s*['\\\"])(?:\d+\.\d+\.)?(\d+\.\d+\.\d+)(['\\\"])\"
 
-              # Uses \g<1> to safely separate the group index from numeric text
-              updated_content = re.sub(pattern, rf\"\g<1>{branch_version}.\2\3\", content)
+          # Uses \g<1> to safely separate the group index from numeric text
+          updated_content = re.sub(pattern, rf\"\g<1>{branch_version}.\2\3\", content)
 
-              with open(manifest_path, 'w') as f:
-                  f.write(updated_content)
-              "
+          with open(manifest_path, 'w') as f:
+              f.write(updated_content)
+          "
             done
             
             # 4. Commit and push the manifest adjustments back to the branch
