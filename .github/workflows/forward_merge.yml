@@ -5,7 +5,7 @@ on:
     branches:
       - master  # Adjust to 'main' if that is your primary branch name
     paths:
-      - '**/__manifest__.py'  # Triggers only when your semantic version changes
+      - '**/__manifest__.py'
 
 jobs:
   merge_prefix_tag:
@@ -16,7 +16,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Pulls full git history and all branches
+          fetch-depth: 0
 
       - name: Configure Git Bot
         run: |
@@ -38,17 +38,19 @@ jobs:
             git checkout "$branch"
             git pull origin "$branch"
             
-            # 2. Merge master into the release branch (favoring master files)
+            # 2. Merge master into the release branch
             if ! git merge "$MASTER_SHA" -m "chore: merge master updates into $branch" -X theirs; then
               echo "❌ CONFLICT DETECTED on branch $branch! Skipping automation."
               git merge --abort
               continue
             fi
             
-            # 3. Find and rewrite the version in the manifest file natively on this branch
+            # 3. Find and rewrite the version in the manifest file natively
             find . -name "__manifest__.py" | while read -r manifest; do
               echo "Fixing prefix for file: $manifest"
-              python3 << 'EOF'
+              
+              # FIXED: Pass environment variables inline directly to the Python subshell execution context
+              MANIFEST_FILE="$manifest" BRANCH_VERSION="$branch" python3 << 'EOF'
 import re
 import os
 
@@ -67,13 +69,12 @@ updated_content = re.sub(pattern, rf"\g<1>{branch_version}.\2\3", content)
 with open(manifest_path, 'w') as f:
     f.write(updated_content)
 EOF
-
             done
             
             # 4. Commit and push the manifest adjustments back to the branch
             if [[ -n "$(git status --porcelain)" ]]; then
               git add "**/__manifest__.py"
-              git commit --amend --no-edit # Blends the modification directly into the merge commit cleanly
+              git commit --amend --no-edit 
               echo "Pushing changes to origin/$branch..."
               git push origin HEAD:"$branch" --force-with-lease
             else
