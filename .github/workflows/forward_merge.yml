@@ -49,19 +49,19 @@ jobs:
             find . -name "__manifest__.py" | while read -r manifest; do
               echo "Fixing prefix for file: $manifest"
               python3 -c "
-import re
-with open('$manifest', 'r') as f:
-    content = f.read()
+            import re
+            with open('$manifest', 'r') as f:
+                content = f.read()
 
-# Captures structural groups securely
-pattern = r\"(['\\\" ]version['\\\" ]\s*:\s*['\\\"])(?:\d+\.\d+\.)?(\d+\.\d+\.\d+)(['\\\"])\"
+            # Captures structural groups securely
+            pattern = r\"(['\\\" ]version['\\\" ]\s*:\s*['\\\"])(?:\d+\.\d+\.)?(\d+\.\d+\.\d+)(['\\\"])\"
 
-# Uses \g<1> to safely separate the group index from numeric text
-updated_content = re.sub(pattern, r\"\g<1>$branch.\2\3\", content)
+            # Uses \g<1> to safely separate the group index from numeric text
+            updated_content = re.sub(pattern, r\"\g<1>$branch.\2\3\", content)
 
-with open('$manifest', 'w') as f:
-    f.write(updated_content)
-"
+            with open('$manifest', 'w') as f:
+                f.write(updated_content)
+            "
             done
             
             # 4. Commit and push the manifest adjustments back to the branch
