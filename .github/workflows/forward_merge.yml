@@ -1,0 +1,54 @@
+name: Forward Merge Master to Odoo Branches
+
+on:
+  push:
+    branches:
+      - master  # Or 'main' depending on your default branch name
+    paths:
+      - '**/__manifest__.py'  # Triggers ONLY when the manifest is updated
+
+jobs:
+  forward_merge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches all history and branches
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@://github.com"
+
+      - name: Merge Master into Odoo Branches
+        run: |
+          # Define the target Odoo branches you actively support
+          ODOO_BRANCHES=("17.0" "18.0" "19.0")
+          
+          # Capture current commit hash from master
+          MASTER_SHA=$(git rev-parse HEAD)
+          echo "New master version commit: $MASTER_SHA"
+
+          for branch in "${ODOO_BRANCHES[@]}"; do
+            echo "----------------------------------------"
+            echo "Processing target branch: $branch"
+            echo "----------------------------------------"
+            
+            # Checkout the target Odoo branch
+            git checkout $branch
+            git pull origin $branch
+            
+            # Merge master into the Odoo branch. 
+            # -Xtheirs favors master's files, but you can change this depending on conflict preferences.
+            if git merge $MASTER_SHA -m "chore: merge master updates into $branch [skip ci]" -X theirs; then
+              echo "Merge successful. Pushing to origin..."
+              git push origin $branch
+            else
+              echo "CONFLICT DETECTED on branch $branch!"
+              echo "Skipping automated push for $branch. Manual resolution required."
+              git merge --abort
+            fi
+          done
