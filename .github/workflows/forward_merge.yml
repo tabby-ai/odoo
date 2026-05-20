@@ -50,7 +50,7 @@ jobs:
               echo "Fixing prefix for file: $manifest"
               
               # Pass variables directly inline into Python subshell
-              MANIFEST_FILE="$manifest" BRANCH_VERSION="$branch" python3 << 'EOF'
+              MANIFEST_FILE="$manifest" BRANCH_VERSION="$branch" python3 -c "
               import re
               import os
 
@@ -61,14 +61,14 @@ jobs:
                   content = f.read()
 
               # Captures structural groups securely
-              pattern = r"(['\" ]version['\" ]\s*:\s*['\"])(?:\d+\.\d+\.)?(\d+\.\d+\.\d+)(['\"])"
+              pattern = r\"(['\\\" ]version['\\\" ]\s*:\s*['\\\"])(?:\d+\.\d+\.)?(\d+\.\d+\.\d+)(['\\\"])\"
 
               # Uses \g<1> to safely separate the group index from numeric text
-              updated_content = re.sub(pattern, rf"\g<1>{branch_version}.\2\3", content)
+              updated_content = re.sub(pattern, rf\"\g<1>{branch_version}.\2\3\", content)
 
               with open(manifest_path, 'w') as f:
                   f.write(updated_content)
-          EOF
+              "
             done
             
             # 4. Commit and push the manifest adjustments back to the branch
