@@ -5,12 +5,10 @@
         <field name="code">tabby_installments</field>
         <field name="sequence">1000</field>
         <field name="active">False</field>
-        <field name="image" type="base64" file="payment_tabby/static/description/icon.png"/>
-        <field name="image_payment_form" type="base64" file="payment_tabby/static/description/icon_checkout.png"/>
-        <field name="support_tokenization">False</field>
-        <field name="support_express_checkout">False</field>
+        <field name="image" type="base64" file="payment_tabby/static/description/icon_checkout.png"/>
         <field name="support_manual_capture">partial</field>
         <field name="support_refund">partial</field>
+
         <field
             name="supported_country_ids"
             eval="[

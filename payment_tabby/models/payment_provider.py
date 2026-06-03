@@ -1,5 +1,6 @@
 import json
 import re
+import logging
 
 from datetime import datetime
 
@@ -8,7 +9,6 @@ from odoo.exceptions import ValidationError
 from odoo.fields import Command
 from odoo.http import request
 
-from odoo.addons.payment.logging import get_payment_logger
 from .. import const
 
 from ..models.dd import DataDog
@@ -16,7 +16,7 @@ from ..models.api import TabbyAPI
 
 
 
-_logger = get_payment_logger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class PaymentProvider(models.Model):
