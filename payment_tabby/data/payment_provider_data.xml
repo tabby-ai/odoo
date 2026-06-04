@@ -8,5 +8,9 @@
         <field name="redirect_form_view_id" ref="tabby_redirect_form"/>
         <field name="image_128" type="base64" file="payment_tabby/static/description/icon.png"/>
         <field name="payment_method_ids" eval="[Command.set([ref('payment_method_tabby_installments'),])]"/>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_manual_capture">partial</field>
+        <field name="support_refund">partial</field>
     </record>
 </odoo>

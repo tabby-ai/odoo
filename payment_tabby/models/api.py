@@ -120,7 +120,7 @@ class TabbyAPI:
                 continue
 
             _logger.info("Webhook object: %s", hooks);
-            hook = next((h for h in hooks if h['url'] == webhook_url), None)
+            hook = next((h for h in hooks if isinstance(h, dict) and 'url' in h and h['url'] == webhook_url), None)
             registered = False
             if hook:
                 registered = True
@@ -157,7 +157,7 @@ class TabbyAPI:
 
     def get_webhooks(self, mcode):
         webhooks = self._request("GET", f"v1/webhooks", mcode=mcode)
-        if not isinstance(webhooks, list):
+        if not hasattr(webhooks, 'error') and not isinstance(webhooks, list):
             webhooks = [webhooks]
         return webhooks
 
