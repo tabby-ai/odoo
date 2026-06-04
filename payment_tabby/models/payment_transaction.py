@@ -118,7 +118,7 @@ class PaymentTransaction(models.Model):
     def get_order_history_object(self, order):
         contacts = self.get_sale_order_contacts(order)
         domain = [
-            ('state', 'in', const.ORDER_STATE_MAP.keys()),
+            ('state', 'in', list(const.ORDER_STATE_MAP.keys())),
             '|',
             ('partner_id.email', 'in', contacts),
             ('partner_id.phone', 'in', contacts),
@@ -216,7 +216,7 @@ class PaymentTransaction(models.Model):
             items.append(item)
         return items
 
-    def _send_capture_request(self):
+    def _send_capture_request(self, amount_to_capture=None):
         if self.provider_code != 'tabby':
             return super()._send_capture_request()
 
@@ -226,15 +226,19 @@ class PaymentTransaction(models.Model):
 
         response = api.capture(
             self.source_transaction_id.provider_reference if self.source_transaction_id else self.provider_reference,
-            self._get_tabby_capture_data()
+            self._get_tabby_capture_data(amount_to_capture)
         )
 
-        self._process('tabby', {'type': 'capture', 'response': response})
+        payload = {'type': 'capture', 'response': response}
+        if hasattr(self, '_process'):
+            return self._process('tabby', payload)
+        else:
+            return self._apply_updates(payload)
 
-    def _get_tabby_capture_data(self):
+    def _get_tabby_capture_data(self, amount_to_capture=None):
         if self.reference != self.source_transaction_id.reference:
             return {
-                'amount': str(round(self.amount, self.currency_id.decimal_places)),
+                'amount': str(round(amount_to_capture if amount_to_capture is not None else self.amount, self.currency_id.decimal_places)),
                 'reference_id': str(self.reference),
             }
         order = self.source_transaction_id.sale_order_ids[:1]
@@ -280,7 +284,11 @@ class PaymentTransaction(models.Model):
             }
         )
 
-        self._process('tabby', {'type': 'refund', 'response': response});
+        payload = {'type': 'refund', 'response': response}
+        if hasattr(self, '_process'):
+            return self._process('tabby', payload)
+        else:
+            return self._apply_updates(payload)
 
     def _send_void_request(self):
         if self.provider_code != 'tabby':
@@ -295,13 +303,23 @@ class PaymentTransaction(models.Model):
 
         response = api.close(self.source_transaction_id.provider_reference)
 
-        self._process('tabby', {'type': 'void', 'response': response});
+        payload = {'type': 'void', 'response': response}
+        if hasattr(self, '_process'):
+            return self._process('tabby', payload)
+        else:
+            return self._apply_updates(payload)
+
 
     def _tabby_update_payment_status(self):
         """ Retrieve payment status from Tabby API. """
         api = TabbyAPI.TabbyAPI(provider=self.provider_id, transaction=self)
         payment = api.get_payment(self.provider_reference)
-        return self._process('tabby', {'type': 'update', 'response': payment})
+
+        payload = {'type': 'update', 'response': payment}
+        if hasattr(self, '_process'):
+            return self._process('tabby', payload)
+        else:
+            return self._apply_updates(payload)
 
     def _extract_amount_data(self, data):
         """ Override of `payment` to extract Tabby payment data. """

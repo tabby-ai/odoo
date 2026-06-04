@@ -15,13 +15,14 @@
                                 const config = <t t-out="json.dumps(provider_sudo.get_tabby_card_config(current_order))"/> ;
                                 new window.TabbyCard(config);
                             }
+                            if (tabbyCardEl) {
+                                const securedBy = tabbyCardEl.parentElement.querySelector('[name=o_payment_secured_by]');
+                                if (securedBy) securedBy.remove();
+                            }
                         });
                         </script>
                     <script t-att-src="provider_sudo.get_tabby_card_script_url()"/>
                 </t>
-            </xpath>
-            <xpath expr="//t[@t-set='hide_secured_by']" position="attributes">
-                <attribute name="t-value" separator=" " add="or provider_sudo.code == 'tabby'"/>
             </xpath>
         </template>
     </data>

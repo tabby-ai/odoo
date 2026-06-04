@@ -81,7 +81,7 @@ class TabbyController(http.Controller):
 
         return request.redirect('/shop/payment/validate')
 
-    @http.route('/payment/tabby/webhook', type='jsonrpc', auth='public', methods=['POST'], csrf=False)
+    @http.route('/payment/tabby/webhook', type='json', auth='public', methods=['POST'], csrf=False)
     def tabby_webhook(self, **kwargs):
         """ Handle Tabby webhook notifications. """
         webhook = request.get_json_data();
