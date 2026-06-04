@@ -3,13 +3,13 @@
     <data>
         <!-- Tabby Promo widget on product page -->
         <template id="tabby_product_widget" name="Tabby Product Widget" inherit_id="website_sale.product">
-            <xpath expr="//div[hasclass('o_wsale_product_details_content_section_price')]" position="after">
+		<xpath expr="//div[hasclass('o_wsale_product_details_content_section_price')] | //t[@t-call='website_sale.product_price']" position="after">
                 <t t-set="tabby_provider" t-value="request.env['payment.provider'].sudo().search([('code', '=', 'tabby'), ('state', 'in', ['enabled', 'test'])], limit=1)"/>
                 <t t-if="tabby_provider">
                     <t t-set="tabby_config" t-value="tabby_provider.get_tabby_promo_config()"/>
 
                     <div id="tabbyPromo"
-                        class="tabby-product-widget mt-3"
+                        class="tabby-product-widget mt-2 mb-2"
                         t-att-data-tabby-price="combination_info['price']"
                         t-att-data-tabby-currency="website.currency_id.name">
                     </div>
@@ -31,7 +31,7 @@
         </template>
         <!-- Tabby Promo widget on cart page -->
         <template id="tabby_cart_widget" name="Tabby Cart Widget" inherit_id="website_sale.total">
-            <xpath expr="//div[contains(@t-attf-class, 'o_cart_total')]" position="after">
+		<xpath expr="//div[contains(@t-attf-class, 'o_cart_total')] | //div[@id='cart_total']" position="after">
                 <t t-set="tabby_provider" t-value="request.env['payment.provider'].sudo().search([('code', '=', 'tabby'), ('state', 'in', ['enabled', 'test'])], limit=1)"/>
 
                 <t t-if="tabby_provider and website_sale_order">
