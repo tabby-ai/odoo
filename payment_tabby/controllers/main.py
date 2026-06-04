@@ -6,6 +6,22 @@ from ..models.dd import DataDog
 
 _logger = logging.getLogger(__name__)
 
+USE_JSONRPC = 'jsonrpc' in http._dispatchers
+
+# 2. SEPARATE DEFENSIVE ROUTES BASED ON VERSION
+if USE_JSONRPC:
+    class TabbyController(http.Controller):
+        # This block executes natively on Odoo 17 and Odoo 19+
+        @http.route('/payment/tabby/webhook', type='jsonrpc', auth='public', methods=['POST'], csrf=False)
+        def tabby_webhook(self, **kwargs):
+            return self._process_webhook_payload(kwargs)
+else:
+    class TabbyController(http.Controller):
+        # This block executes natively on Odoo 18 (where 'jsonrpc' throws an AssertionError)
+        @http.route('/payment/tabby/webhook', type='json', auth='public', methods=['POST'], csrf=False)
+        def tabby_webhook(self, **kwargs):
+            return self._process_webhook_payload(kwargs)
+
 class TabbyController(http.Controller):
     @http.route('/payment/tabby/cancel', type='http', auth='public', methods=['GET'], csrf=False, website=True)
     def tabby_cancel(self, **kwargs):
@@ -81,8 +97,7 @@ class TabbyController(http.Controller):
 
         return request.redirect('/shop/payment/validate')
 
-    @http.route('/payment/tabby/webhook', type='json', auth='public', methods=['POST'], csrf=False)
-    def tabby_webhook(self, **kwargs):
+    def _process_webhook_payload(self, **kwargs):
         """ Handle Tabby webhook notifications. """
         webhook = request.get_json_data();
 
