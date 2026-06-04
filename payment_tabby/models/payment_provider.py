@@ -22,12 +22,43 @@ _logger = logging.getLogger(__name__)
 class PaymentProvider(models.Model):
     _inherit = 'payment.provider'
 
+    @api.model
+    def _setup_tabby_payment_methods(self):
+        """Safely updates Tabby payment methods with version-specific capabilities without crashing"""
+        # Find the payment method record created by your XML data file
+        method = self.env['payment.method'].search([('code', '=', 'tabby_installments')], limit=1)
+        if not method:
+            return
+
+        # Initialize an empty values dictionary for safe population
+        vals = {}
+        method_fields = self.env['payment.method']._fields
+
+        # 1. Odoo 19+ Specific Fields (Safe Fallback)
+        if 'support_manual_capture' in method_fields:
+            vals['support_manual_capture'] = 'partial'
+        if 'support_refund' in method_fields:
+            vals['support_refund'] = 'partial'
+        if 'support_tokenization' in method_fields:
+            vals['support_tokenization'] = False
+        if 'support_express_checkout' in method_fields:
+            vals['support_express_checkout'] = False
+
+        # 2. Odoo 17 / 18 Specific Fields (Safe Fallback)
+        if 'image_payment_form' in method_fields:
+            # If running on an older point release that requires image_payment_form
+            vals['image_payment_form'] = method.image
+
+        # If any version-specific fields match your current Odoo core environment, write them safely
+        if vals:
+            _logger.info(f"Dynamically configuring version-specific fields for Tabby: {list(vals.keys())}")
+            method.sudo().write(vals)
 
     code = fields.Selection(
         selection_add=[('tabby', "Tabby")], ondelete={'tabby': 'set default'})
 
     state = fields.Selection(
-        selection_add=[('test', None)],
+        selection_add=[('test', 'Test Mode')],
         ondelete={'test': 'set default'}
     )
 
