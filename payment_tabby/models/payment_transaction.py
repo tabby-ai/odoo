@@ -218,7 +218,7 @@ class PaymentTransaction(models.Model):
 
     def _send_capture_request(self, amount_to_capture=None):
         if self.provider_code != 'tabby':
-            return super()._send_capture_request()
+            return super()._send_capture_request(amount_to_capture=amount_to_capture)
 
         self.ensure_one()
 
@@ -292,7 +292,7 @@ class PaymentTransaction(models.Model):
 
     def _send_void_request(self):
         if self.provider_code != 'tabby':
-            return super()._send_refund_request(amount_to_refund=amount_to_refund)
+            return super()._send_void_request()
 
         if not self.source_transaction_id.provider_reference:
             raise ValidationError(_("No Tabby payment ID found for this transaction."))
@@ -324,7 +324,7 @@ class PaymentTransaction(models.Model):
     def _extract_amount_data(self, data):
         """ Override of `payment` to extract Tabby payment data. """
         if self.provider_code != 'tabby':
-            return super()._extract_payment_data(data)
+            return super()._extract_amount_data(data)
 
         if data.get('type') == 'void':
             return None
