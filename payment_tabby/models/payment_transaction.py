@@ -2,6 +2,7 @@ import logging
 from . import api as TabbyAPI
 from datetime import datetime, timedelta
 from odoo import api, fields, models, _
+from odoo.exceptions import ValidationError
 from werkzeug.urls import url_decode, url_parse
 from .. import const
 
@@ -218,6 +219,8 @@ class PaymentTransaction(models.Model):
 
     def _send_capture_request(self, amount_to_capture=None):
         if self.provider_code != 'tabby':
+            if amount_to_capture is None:
+                return super()._send_capture_request()
             return super()._send_capture_request(amount_to_capture=amount_to_capture)
 
         self.ensure_one()
@@ -260,6 +263,8 @@ class PaymentTransaction(models.Model):
 
     def _send_refund_request(self, amount_to_refund=None):
         if self.provider_code != 'tabby':
+            if amount_to_refund is None:
+                return super()._send_refund_request()
             return super()._send_refund_request(amount_to_refund=amount_to_refund)
         auth_txn = self.source_transaction_id
 
