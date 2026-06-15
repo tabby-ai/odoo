@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<odoo noupdate="1">
+<odoo>
     <record id="payment_provider_tabby" model="payment.provider">
         <field name="code">tabby</field>
         <field name="state">disabled</field>
