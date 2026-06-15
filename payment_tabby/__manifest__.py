@@ -1,6 +1,6 @@
 {
     'name': "Payment Provider: Tabby",
-    'version': '17.0.2.0.9',
+    'version': '17.0.2.1.0',
     'category': 'Accounting/Payment Providers',
     'sequence': 350,
     'summary': "Tabby payment provider",
