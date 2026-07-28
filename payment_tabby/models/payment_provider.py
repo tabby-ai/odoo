@@ -190,6 +190,12 @@ class PaymentProvider(models.Model):
 
         return res
 
+    def cron_check_webhooks(self):
+        for provider in self:
+            if provider.code == 'tabby':
+                    if self.state in ['enabled', 'test']:
+                        provider._register_webhooks()
+
     def _register_webhooks(self):
         url = f"{self.env['ir.config_parameter'].sudo().get_param('web.base.url')}/payment/tabby/webhook"
         enabled = self.available_currency_ids.mapped('name')
