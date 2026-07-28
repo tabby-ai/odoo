@@ -209,6 +209,7 @@ class PaymentTransaction(models.Model):
                 'quantity': int(line.product_uom_qty),
                 'unit_price': self._get_tabby_item_unit_price(line),
                 'reference_id': self._get_tabby_item_reference_id(line),
+                'brand': self._get_tabby_item_brand_name(line),
                 'description': line.name,
                 'image_url': f"{base_url}/web/image?model=product.product&id={line.product_id.id}&field=image_1920",
                 'product_url': f"{base_url}/{line.product_id.website_url}",
@@ -216,6 +217,38 @@ class PaymentTransaction(models.Model):
             }
             items.append(item)
         return items
+
+    def _get_tabby_item_brand_name(self, line_item):
+        # Default to None
+        brand_name = None
+
+        # Ensure the line item contains a valid product reference
+        if line_item.product_id:
+            product = line_item.product_id
+            # -------------------------------------------------------------
+            # METHOD 1: Community / Custom Module Field (e.g., brand_id)
+            # -------------------------------------------------------------
+            if hasattr(product, 'brand_id') and product.brand_id:
+                brand_name = product.brand_id.name
+            # -------------------------------------------------------------
+            # METHOD 2: Odoo Studio Custom Field (e.g., x_studio_brand)
+            # -------------------------------------------------------------
+            elif hasattr(product, 'x_studio_brand') and product.x_studio_brand:
+                brand_name = product.x_studio_brand.name
+            # -------------------------------------------------------------
+            # METHOD 3: Native Odoo Product Attributes (Attribute named 'Brand')
+            # Works in 17, 18, and 19 via product's template attribute lines
+            # -------------------------------------------------------------
+            elif hasattr(product, 'attribute_line_ids'):
+                # Filter attribute lines looking for an attribute named 'Brand' (case-insensitive)
+                brand_line = product.attribute_line_ids.filtered(
+                    lambda l: l.attribute_id.name and l.attribute_id.name.strip().lower() == 'brand'
+                )
+                # Extract the associated value assigned to this specific variant
+                if brand_line and brand_line.value_ids:
+                    brand_name = brand_line.value_ids[0].name
+
+        return brand_name
 
     def _send_capture_request(self, amount_to_capture=None):
         if self.provider_code != 'tabby':
