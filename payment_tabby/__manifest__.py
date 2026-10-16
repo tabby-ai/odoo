@@ -25,7 +25,7 @@ and more than 40,000 retailers in the region.
     ],
     'post_init_hook': 'post_init_hook',
     'uninstall_hook': 'uninstall_hook',
-    'license': 'LGPL-3',
+    'license': 'Other OSI approved licence',
     'installable': True,
 }
 
