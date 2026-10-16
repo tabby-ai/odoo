@@ -2,6 +2,7 @@ import requests
 import json
 import threading
 import logging
+import re
 from odoo import release
 from odoo.http import request
 
