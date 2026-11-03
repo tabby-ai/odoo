@@ -16,7 +16,7 @@ msgstr ""
 #. module: payment_tabby
 #: model:payment.method,name:payment_tabby.payment_method_tabby_installments
 msgid "Pay later with Tabby"
-msgstr "ﺍﺪﻔﻋ ﻼﺤﻗًﺍ ﻊﺑﺭ ﺕﺎﺒﻳ"
+msgstr "ادفع لاحقًا عبر تابي"
 
 #. module: payment_tabby
 #. odoo-python
