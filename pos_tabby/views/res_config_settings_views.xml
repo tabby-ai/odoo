@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form_inherit_pos_tabby" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.pos.tabby</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="point_of_sale.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//block[@id='pos_payment_section']" position="after">
+                <block title="Tabby" id="pos_tabby_section">
+                    <setting string="Tabby merchant code" help="Branch merchant code in Tabby, sent with every session from this POS.">
+                        <field name="pos_tabby_merchant_code"/>
+                    </setting>
+                    <setting string="Tabby terminal" help="Till id and its coordinates, sent with every session (coordinates are required for KSA terminals).">
+                        <div class="content-group">
+                            <div class="row"><label for="pos_tabby_terminal_id" class="col-lg-4 o_light_label"/><field name="pos_tabby_terminal_id"/></div>
+                            <div class="row"><label for="pos_tabby_latitude" class="col-lg-4 o_light_label"/><field name="pos_tabby_latitude"/></div>
+                            <div class="row"><label for="pos_tabby_longitude" class="col-lg-4 o_light_label"/><field name="pos_tabby_longitude"/></div>
+                        </div>
+                    </setting>
+                </block>
+            </xpath>
+        </field>
+    </record>
+</odoo>
