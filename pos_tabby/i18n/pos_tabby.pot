@@ -1,0 +1,768 @@
+# Translation of Odoo Server.
+# This file contains the translation of the following modules:
+# 	* pos_tabby
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 18.0-20261112\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-18 14:12+0000\n"
+"PO-Revision-Date: 2026-11-18 14:12+0000\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: \n"
+"Plural-Forms: \n"
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_order.py:0
+msgid ""
+"%(order)s: Tabby could not be reached to confirm payment %(id)s. Try again "
+"in a moment."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_order.py:0
+msgid ""
+"%(order)s: Tabby has not confirmed the %(kind)s of %(amount)s %(cur)s on its"
+" Tabby line. Send the line to Tabby again, or remove it and use another "
+"payment method."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_order.py:0
+msgid ""
+"%(order)s: Tabby payment %(id)s of %(amount)s %(cur)s is %(state)s, but the "
+"order has no Tabby line for it. Add a Tabby line of that amount, or refund "
+"the payment in the Tabby merchant dashboard."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_order.py:0
+msgid ""
+"%(order)s: a Tabby refund of %(amount)s %(cur)s on payment %(id)s went to "
+"the customer or is not confirmed, but the order has no Tabby line for it. "
+"Add a Tabby refund line of that amount, or check the payment in the Tabby "
+"merchant dashboard."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "A Tabby payment needs a positive amount."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"A Tabby refund covers items from one original order. Return each order "
+"separately."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "A Tabby refund needs an amount."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"A Tabby refund of %(amount)s was started for this line. Check payment %(id)s"
+" in the Tabby merchant dashboard; do not refund this line again."
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__amount
+msgid "Amount"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__api_method_id
+msgid "Api Method"
+msgstr ""
+
+#. module: pos_tabby
+#: model_terms:ir.ui.view,arch_db:pos_tabby.res_config_settings_view_form_inherit_pos_tabby
+msgid "Branch merchant code in Tabby, sent with every session from this POS."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid "Cancel payment"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields.selection,name:pos_tabby.selection__pos_tabby_attempt__state__cancelled
+msgid "Cancelled"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__captured
+msgid "Captured"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid "Check status"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__company_id
+msgid "Company"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__config_id
+msgid "Config"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model,name:pos_tabby.model_res_config_settings
+msgid "Config Settings"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid "Could not reach the Odoo server. Check the connection and try again."
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__create_uid
+msgid "Created by"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__create_date
+msgid "Created on"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__currency_id
+msgid "Currency"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__display_name
+msgid "Display Name"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields.selection,name:pos_tabby.selection__pos_tabby_attempt__state__failed
+msgid "Failed"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,help:pos_tabby.field_pos_config__tabby_timeout
+#: model:ir.model.fields,help:pos_tabby.field_res_config_settings__pos_tabby_timeout
+msgid ""
+"How long the till waits for the customer before it cancels the Tabby session"
+" (180 to 900)."
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__id
+msgid "ID"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "Invalid %s."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"Invalid Tabby Secret Key format. Must be: sk_[test_]xxxxxxxx-xxxx-xxxx-xxxx-"
+"xxxxxxxxxxxx"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__kind
+msgid "Kind"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__write_uid
+msgid "Last Updated by"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__write_date
+msgid "Last Updated on"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__line_uuid
+msgid "Line Uuid"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,help:pos_tabby.field_pos_config__tabby_merchant_code
+#: model:ir.model.fields,help:pos_tabby.field_res_config_settings__pos_tabby_merchant_code
+msgid ""
+"Merchant code of this branch in Tabby. Sent with every session created from "
+"this POS."
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__message
+msgid "Message"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,help:pos_tabby.field_pos_tabby_attempt__api_method_id
+msgid ""
+"Method whose key runs the Tabby calls: the original payment's method for a "
+"refund."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "No Tabby payment found on the original order."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "No Tabby payment was started for this line."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "Only %(left)s %(cur)s is left to refund on this Tabby payment."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "Only Point of Sale users can use the Tabby terminal."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "Order %s is already validated. Start a new order."
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__order_reference
+msgid "Order Reference"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__order_uuid
+msgid "Order Uuid"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,help:pos_tabby.field_pos_tabby_attempt__refund_lines
+msgid "Original order line id -> quantity returned (refunds)."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "POS configuration not found."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "POS return"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields.selection,name:pos_tabby.selection__pos_tabby_attempt__state__paid
+msgid "Paid"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid ""
+"Paid with Tabby\n"
+"Tabby payment ID:\n"
+"%s"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields.selection,name:pos_tabby.selection__pos_tabby_attempt__state__partial
+msgid "Partially captured"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields.selection,name:pos_tabby.selection__pos_tabby_attempt__kind__payment
+msgid "Payment"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__payment_method_id
+msgid "Payment Method"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid "Payment cancelled by the cashier."
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields.selection,name:pos_tabby.selection__pos_tabby_attempt__state__pending
+msgid "Pending"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model,name:pos_tabby.model_pos_config
+msgid "Point of Sale Configuration"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model,name:pos_tabby.model_pos_order
+msgid "Point of Sale Orders"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model,name:pos_tabby.model_pos_payment_method
+msgid "Point of Sale Payment Methods"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__pos_payment_id
+msgid "Pos Payment"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__qr_image
+msgid "Qr Image"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__reference
+msgid "Reference"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__refund_id
+#: model:ir.model.fields.selection,name:pos_tabby.selection__pos_tabby_attempt__kind__refund
+msgid "Refund"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__refund_lines
+msgid "Refund Lines"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__refunded
+#: model:ir.model.fields.selection,name:pos_tabby.selection__pos_tabby_attempt__state__refunded
+msgid "Refunded"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid ""
+"Refunded with Tabby\n"
+"Tabby payment ID:\n"
+"%s"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,help:pos_tabby.field_pos_payment_method__tabby_secret_key
+msgid ""
+"Secret key from the Tabby merchant dashboard. A sk_test_ key runs test "
+"payments."
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__session_id
+msgid "Session"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "Set the Tabby merchant code in the POS settings first."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "Set the Tabby terminal coordinates in the POS settings first."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "Set the Tabby terminal id in the POS settings first."
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__state
+#: model_terms:ir.ui.view,arch_db:pos_tabby.pos_tabby_attempt_view_search
+msgid "State"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+#: model_terms:ir.ui.view,arch_db:pos_tabby.res_config_settings_view_form_inherit_pos_tabby
+msgid "Tabby"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"Tabby %(what)s %(id)s of %(amount)s on this order is not resolved. Add a "
+"Tabby line of that amount to continue it, or resolve it in the Tabby "
+"merchant dashboard."
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_config__tabby_merchant_code
+#: model:ir.model.fields,field_description:pos_tabby.field_res_config_settings__pos_tabby_merchant_code
+msgid "Tabby Merchant Code"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model,name:pos_tabby.model_pos_tabby_attempt
+msgid "Tabby POS attempt"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "Tabby POS supports AED and SAR companies only, not %s."
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__payment_id
+msgid "Tabby Payment ID"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.actions.act_window,name:pos_tabby.pos_tabby_attempt_action
+#: model:ir.ui.menu,name:pos_tabby.pos_tabby_attempt_menu
+msgid "Tabby Payments"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_payment_method__tabby_secret_key
+msgid "Tabby Secret Key"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__tabby_status
+msgid "Tabby Status"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_config__tabby_terminal_id
+#: model:ir.model.fields,field_description:pos_tabby.field_res_config_settings__pos_tabby_terminal_id
+msgid "Tabby Terminal ID"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_payment_method__tabby_test_mode
+msgid "Tabby Test Mode"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_config__tabby_timeout
+#: model:ir.model.fields,field_description:pos_tabby.field_res_config_settings__pos_tabby_timeout
+msgid "Tabby Wait (seconds)"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"Tabby already refunded %(amount)s with this line's reference. Check payment "
+"%(id)s in the Tabby merchant dashboard; do not refund this line again."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"Tabby cannot approve this purchase (%s). Please use another payment method."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "Tabby cannot approve this purchase. Please use another payment method."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid ""
+"Tabby closed payment %(id)s after collecting only %(captured)s. The line "
+"stays on this order: refund that amount in the Tabby merchant dashboard, and"
+" the till releases the line."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid ""
+"Tabby could not approve this purchase. Please use another payment method."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"Tabby could not show a QR code for payment %s and did not confirm its "
+"cancellation. The till keeps checking it."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "Tabby could not show a QR code for this payment. Please try again."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid ""
+"Tabby did not confirm the cancellation of payment %s. It stays on this order"
+" and the till keeps checking it; resolve it in the Tabby merchant dashboard "
+"if it does not clear."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid ""
+"Tabby did not confirm the refund yet. The till keeps checking; do not refund"
+" this amount another way."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid "Tabby is unavailable. Please use another payment method."
+msgstr ""
+
+#. module: pos_tabby
+#: model_terms:ir.ui.view,arch_db:pos_tabby.res_config_settings_view_form_inherit_pos_tabby
+msgid "Tabby merchant code"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"Tabby payment %(id)s for this line is for %(amount)s %(cur)s. Set the line "
+"back to that amount, or resolve the payment in the Tabby merchant dashboard."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid "Tabby refund failed. Please try again."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid ""
+"Tabby refunds work from a return of a Tabby-paid order (Actions > Refund)."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "Tabby returned an incomplete session. Please try again."
+msgstr ""
+
+#. module: pos_tabby
+#: model_terms:ir.ui.view,arch_db:pos_tabby.res_config_settings_view_form_inherit_pos_tabby
+msgid "Tabby terminal"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_config__tabby_latitude
+#: model:ir.model.fields,field_description:pos_tabby.field_res_config_settings__pos_tabby_latitude
+msgid "Terminal Latitude"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_config__tabby_longitude
+#: model:ir.model.fields,field_description:pos_tabby.field_res_config_settings__pos_tabby_longitude
+msgid "Terminal Longitude"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,help:pos_tabby.field_pos_tabby_attempt__pos_payment_id
+msgid "The POS payment line this attempt was recorded on."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid ""
+"The Tabby payment was cancelled or has expired. Send a new request or use "
+"another payment method."
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,help:pos_tabby.field_pos_tabby_attempt__payment_id
+msgid "The Tabby payment; for a refund, the original payment refunded."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid ""
+"The Tabby refund for this line is not confirmed. Check the payment in the "
+"Tabby merchant dashboard before refunding this amount another way."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_config.py:0
+msgid "The Tabby terminal coordinates are out of range."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_config.py:0
+msgid "The Tabby wait must be between 180 and 900 seconds."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"The amount is above what Tabby can approve for this customer. Try a lower "
+"amount or another payment method."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"The amount is below the Tabby minimum for this store. Please use another "
+"payment method."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid "The customer did not complete the Tabby payment in time."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-javascript
+#: code:addons/pos_tabby/static/src/app/payment_tabby.js:0
+msgid ""
+"The customer paid with Tabby, but the capture is not confirmed yet. Capture "
+"payment %s in the Tabby merchant dashboard; the till completes the sale once"
+" it sees the capture."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "The original order belongs to another company or currency."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"The original order was paid with Tabby method %s, which is not enabled on "
+"this POS."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"The original order was paid with several Tabby payments. Refund it from the "
+"Tabby merchant dashboard."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"The refund is more than the value of the returned items: at most %(left)s "
+"%(cur)s."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "This payment method is not a Tabby terminal."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "This payment method is not enabled on this POS."
+msgstr ""
+
+#. module: pos_tabby
+#: model_terms:ir.ui.view,arch_db:pos_tabby.res_config_settings_view_form_inherit_pos_tabby
+msgid ""
+"Till id and its coordinates (required), sent with every session, and how "
+"long the till waits for the customer."
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,help:pos_tabby.field_pos_config__tabby_terminal_id
+#: model:ir.model.fields,help:pos_tabby.field_res_config_settings__pos_tabby_terminal_id
+msgid "Unique id of this till. Sent as the payment description."
+msgstr ""
+
+#. module: pos_tabby
+#: model_terms:ir.ui.view,arch_db:pos_tabby.pos_tabby_attempt_view_search
+msgid "Unresolved"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__web_url
+msgid "Web Url"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_order.py:0
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "payment"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,help:pos_tabby.field_pos_tabby_attempt__reference
+msgid "reference_id sent with the refund."
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_order.py:0
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid "refund"
+msgstr ""
