@@ -318,8 +318,56 @@ class TestPosTabby(TransactionCase):
         order._tabby_check_payments()  # refunded in the dashboard: no money held
 
     def paid_order(self):
+        """An order paid through the till and checked at sync; the return gets new uuids."""
+        self.create()
         self.fake.payment.update(status='CLOSED', captures=[{'amount': '100.00'}])
-        return self.make_order([{'payment_method_id': self.method.id, 'amount': 100, 'transaction_id': PAYMENT_ID}])
+        order = self.make_order([{'payment_method_id': self.method.id, 'amount': 100, 'uuid': self.line_uuid,
+                                  'transaction_id': PAYMENT_ID}], self.order_uuid)
+        order._tabby_check_payments()
+        self.order_uuid, self.line_uuid = new_uuid(), new_uuid()
+        return order
+
+    def test_sync_overwrites_transaction_id(self):
+        self.create()
+        self.fake.payment.update(status='CLOSED', captures=[{'amount': '100.00'}])
+        order = self.make_order([{'payment_method_id': self.method.id, 'amount': 100, 'uuid': self.line_uuid,
+                                  'transaction_id': '33333333-3333-4333-8333-333333333333'}], self.order_uuid)
+        order._tabby_check_payments()
+        self.assertEqual(order.payment_ids.transaction_id, PAYMENT_ID)
+
+    def test_refund_needs_checked_payment(self):
+        # A Tabby line no attempt confirmed (a draft, or a transaction id the till wrote) is no refund target.
+        order = self.make_order([{'payment_method_id': self.method.id, 'amount': 100, 'transaction_id': PAYMENT_ID}])
+        self.assertIn('No Tabby payment found', self.refund(order.lines)['error'])
+        self.assertFalse(self.fake.calls)
+
+    def test_refunded_payment_does_not_pay(self):
+        self.create()
+        self.fake.payment.update(status='CLOSED', captures=[{'amount': '100.00'}], refunds=[{'amount': '100.00'}])
+        self.assertEqual(self.pm.tabby_payment_status(self.data())['outcome'], 'failed')
+        # Seen paid by the till, refunded in the dashboard before the sale synced.
+        self.order_uuid, self.line_uuid = new_uuid(), new_uuid()
+        self.create()
+        self.fake.payment.update(refunds=[])
+        self.assertEqual(self.pm.tabby_payment_status(self.data())['outcome'], 'paid')
+        self.fake.payment['refunds'] = [{'amount': '100.00'}]
+        order = self.make_order([{'payment_method_id': self.method.id, 'amount': 100, 'uuid': self.line_uuid}],
+                                self.order_uuid)
+        with self.assertRaises(UserError):
+            order._tabby_check_payments()
+
+    def test_edited_amount_cancels_old_session(self):
+        self.create(amount=100)
+        res = self.create(amount=50)
+        self.assertFalse(res.get('resumed'))
+        self.assertEqual(self.fake.count('POST', '/api/v2/checkout'), 2)
+        self.assertEqual(self.fake.count('POST', '/cancel'), 1)
+        states = self.env['pos.tabby.attempt'].search([('line_uuid', '=', self.line_uuid)]).mapped('state')
+        self.assertEqual(sorted(states), ['cancelled', 'pending'])
+        # A paid session is never dropped for a new amount.
+        self.fake.payment.update(status='CLOSED', captures=[{'amount': '50.00'}], amount='50.00')
+        self.pm.tabby_payment_status(self.data())
+        self.assertIn('Set the line back', self.create(amount=40)['error'])
 
     def refund(self, line, qty=1, amount=-50.0, line_uuid=None, order_uuid=None):
         self.line_uuid = line_uuid or self.line_uuid
@@ -375,3 +423,30 @@ class TestPosTabby(TransactionCase):
         res = other.with_user(self.user).tabby_refund({
             **self.data(amount=-50, refunded_lines=[{'id': original.lines.id, 'qty': 1}]), 'config_id': till2.id})
         self.assertIn('not enabled on this POS', res['error'])
+
+    def test_refund_lookup_failure_stays_uncertain(self):
+        original = self.paid_order()
+        self.fake.refund_status = 503
+        self.assertTrue(self.refund(original.lines)['uncertain'])
+        self.fake.get_status = 401  # e.g. a key change while the refund is unconfirmed
+        res = self.refund(original.lines)
+        self.assertTrue(res['uncertain'])
+        self.assertEqual(self.attempt().state, 'pending')
+
+    def test_refund_cap_across_returns(self):
+        original = self.paid_order()  # 2 items, 100
+        self.refund(original.lines, qty=1, amount=-50)  # return A, not synced yet
+        self.order_uuid, self.line_uuid = new_uuid(), new_uuid()  # return B of the same item
+        self.assertIn('at most 50.00', self.refund(original.lines, qty=2, amount=-100)['error'])
+        self.assertTrue(self.refund(original.lines, qty=1, amount=-50)['refund_id'])
+
+    def test_refund_draft_return_not_counted(self):
+        original = self.paid_order()
+        session = original.session_id
+        self.env['pos.order'].create({
+            'session_id': session.id, 'uuid': self.order_uuid, 'state': 'draft',
+            'lines': [(0, 0, {'product_id': self.product.id, 'qty': -2, 'price_unit': 50, 'price_subtotal': -100,
+                              'price_subtotal_incl': -100, 'refunded_orderline_id': original.lines.id})],
+            'amount_tax': 0, 'amount_total': -100, 'amount_paid': 0, 'amount_return': 0,
+        })
+        self.assertTrue(self.refund(original.lines, qty=2, amount=-100)['refund_id'])

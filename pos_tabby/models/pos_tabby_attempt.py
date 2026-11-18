@@ -48,6 +48,7 @@ class PosTabbyAttempt(models.Model):
                              help="The Tabby payment; for a refund, the original payment refunded.")
     reference = fields.Char(readonly=True, help="reference_id sent with the refund.")
     refund_id = fields.Char(readonly=True)
+    refund_lines = fields.Text(readonly=True, help="Original order line id -> quantity returned (refunds).")
     amount = fields.Monetary(readonly=True)
     captured = fields.Monetary(readonly=True)
     refunded = fields.Monetary(readonly=True)

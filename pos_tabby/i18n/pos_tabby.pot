@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 18.0-20261112\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 13:52+0000\n"
-"PO-Revision-Date: 2026-11-18 13:52+0000\n"
+"POT-Creation-Date: 2026-11-18 14:07+0000\n"
+"PO-Revision-Date: 2026-11-18 14:07+0000\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "MIME-Version: 1.0\n"
@@ -256,6 +256,11 @@ msgid "Order Uuid"
 msgstr ""
 
 #. module: pos_tabby
+#: model:ir.model.fields,help:pos_tabby.field_pos_tabby_attempt__refund_lines
+msgid "Original order line id -> quantity returned (refunds)."
+msgstr ""
+
+#. module: pos_tabby
 #. odoo-python
 #: code:addons/pos_tabby/models/pos_payment_method.py:0
 msgid "POS configuration not found."
@@ -341,6 +346,11 @@ msgstr ""
 #: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__refund_id
 #: model:ir.model.fields.selection,name:pos_tabby.selection__pos_tabby_attempt__kind__refund
 msgid "Refund"
+msgstr ""
+
+#. module: pos_tabby
+#: model:ir.model.fields,field_description:pos_tabby.field_pos_tabby_attempt__refund_lines
+msgid "Refund Lines"
 msgstr ""
 
 #. module: pos_tabby
@@ -542,6 +552,14 @@ msgstr ""
 #. module: pos_tabby
 #: model_terms:ir.ui.view,arch_db:pos_tabby.res_config_settings_view_form_inherit_pos_tabby
 msgid "Tabby merchant code"
+msgstr ""
+
+#. module: pos_tabby
+#. odoo-python
+#: code:addons/pos_tabby/models/pos_payment_method.py:0
+msgid ""
+"Tabby payment %(id)s for this line is for %(amount)s %(cur)s. Set the line "
+"back to that amount, or resolve the payment in the Tabby merchant dashboard."
 msgstr ""
 
 #. module: pos_tabby

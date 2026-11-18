@@ -75,6 +75,15 @@ class PosPaymentMethod(models.Model):
                 raise ValidationError(_("Invalid %s.", key))
         return config
 
+    def _tabby_lock(self, model, record_id):
+        """Serialize concurrent Tabby calls on one record.
+
+        The no-op UPDATE makes a concurrent transaction that updates the same
+        row wait, then fail with a serialization error once this one commits;
+        Odoo retries that request, which then sees what this one recorded.
+        """
+        self.env.cr.execute('UPDATE "%s" SET write_date = write_date WHERE id = %%s' % self.env[model]._table, [record_id])
+
     def _tabby_api(self, currency):
         self.ensure_one()
         return TabbyPosAPI(self.sudo().tabby_secret_key, currency,
@@ -214,7 +223,8 @@ class PosPaymentMethod(models.Model):
         The outcome is 'paid' only when the full amount is captured: the goods
         leave the shop at once and Tabby refunds only captured payments. A
         CLOSED payment without captures was voided; one closed after part of
-        it was captured is 'partial' until that part is refunded.
+        it was captured is 'partial' until that part is refunded. Refunds count:
+        a payment refunded in full no longer pays anything.
         """
         currency = attempt.currency_id
         status = (payment.get('status') or '').upper()
@@ -236,7 +246,8 @@ class PosPaymentMethod(models.Model):
                 _logger.warning("Tabby POS capture failed for payment %s: %s", attempt.payment_id, exc)
                 result['capture_error'] = str(exc)
         refunded = self._tabby_sum(payment.get('refunds'))
-        if status in const.PAID_STATUSES and amount > 0 and currency.compare_amounts(captured, amount) >= 0:
+        # What Tabby keeps for the sale: a payment refunded in the dashboard pays nothing.
+        if status in const.PAID_STATUSES and amount > 0 and currency.compare_amounts(captured - refunded, amount) >= 0:
             state = 'paid'
         elif status == 'CLOSED' and currency.compare_amounts(captured - refunded, 0) > 0:
             state = 'partial'
@@ -252,7 +263,7 @@ class PosPaymentMethod(models.Model):
         """Read the attempt's payment from Tabby and settle it."""
         if not force and attempt.state in RELEASED_STATES:
             return {'outcome': 'failed', 'status': attempt.tabby_status, 'payment_id': attempt.payment_id}
-        if not force and attempt.state == 'paid':
+        if not force and attempt.state == 'paid' and attempt.pos_payment_id:
             return {'outcome': 'paid', 'status': attempt.tabby_status, 'payment_id': attempt.payment_id}
         api = attempt.api_method_id._tabby_api(attempt.currency_id.name)
         try:
@@ -270,7 +281,7 @@ class PosPaymentMethod(models.Model):
         """
         if attempt.state in RELEASED_STATES:
             return {'cancelled': True}
-        if attempt.state == 'paid':
+        if attempt.state == 'paid' and attempt.pos_payment_id:
             return {'outcome': 'paid', 'status': attempt.tabby_status, 'payment_id': attempt.payment_id}
         api = attempt.api_method_id._tabby_api(attempt.currency_id.name)
         try:
@@ -301,9 +312,20 @@ class PosPaymentMethod(models.Model):
         amount = currency.round(float(data.get('amount') or 0))
         if currency.compare_amounts(amount, 0) <= 0:
             return {'error': _("A Tabby payment needs a positive amount.")}
+        # One session per line, also when two devices send the same order.
+        self._tabby_lock('pos.config', config.id)
         attempt = self._tabby_open_attempt(config, data, 'payment', amount)
         if isinstance(attempt, dict):
             return attempt
+        if attempt and currency.compare_amounts(attempt.amount, amount):
+            # The cashier changed the amount after the session was created.
+            result = self._tabby_cancel(attempt) if attempt.state == 'pending' else {}
+            if not result.get('cancelled'):
+                return {'error': _(
+                    "Tabby payment %(id)s for this line is for %(amount)s %(cur)s. Set the line back to that "
+                    "amount, or resolve the payment in the Tabby merchant dashboard.",
+                    id=attempt.payment_id, amount=self._tabby_format(currency, attempt.amount), cur=currency.name)}
+            attempt = self.env['pos.tabby.attempt']
         if attempt:
             return attempt._view(resumed=True)
         try:
@@ -384,6 +406,7 @@ class PosPaymentMethod(models.Model):
         amount = currency.round(abs(float(data.get('amount') or 0)))
         if currency.is_zero(amount):
             return {'error': _("A Tabby refund needs an amount.")}
+        self._tabby_lock('pos.config', config.id)
         attempt = self._tabby_open_attempt(config, data, 'refund', amount)
         if isinstance(attempt, dict):
             return attempt
@@ -394,6 +417,9 @@ class PosPaymentMethod(models.Model):
                 amount=self._tabby_format(currency, attempt.amount), id=attempt.payment_id)}
         if attempt.state == 'refunded':
             return {'refund_id': attempt.refund_id, 'payment_id': attempt.payment_id}
+        # A refund already sent once may have moved money: until Tabby shows its
+        # reference, any failure (even of the lookup) leaves it uncertain.
+        sent_before = bool(attempt)
         if not attempt:
             attempt = self._tabby_new_refund(config, data, amount)
             if isinstance(attempt, dict):
@@ -423,7 +449,7 @@ class PosPaymentMethod(models.Model):
             })
         except TabbyError as exc:
             # No HTTP status (network), rate limit or a 5xx: the refund may have happened.
-            uncertain = exc.status is None or exc.status == 429 or exc.status >= 500
+            uncertain = sent_before or exc.status is None or exc.status == 429 or exc.status >= 500
             if not uncertain:
                 attempt.write({'state': 'failed', 'message': str(exc)[:200]})
             return {'error': str(exc), 'uncertain': uncertain}
@@ -447,28 +473,41 @@ class PosPaymentMethod(models.Model):
         original_order = lines.order_id
         if original_order.company_id != config.company_id or original_order.currency_id != currency:
             return {'error': _("The original order belongs to another company or currency.")}
-        original = original_order.payment_ids.filtered(
-            lambda p: p.payment_method_id.use_payment_terminal == 'tabby' and p.transaction_id and p.amount > 0)
-        if not original:
+        # The original Tabby payment comes from attempts checked at order sync,
+        # never from a transaction id the till wrote.
+        Attempt = self.env['pos.tabby.attempt'].sudo()
+        paid = Attempt.search([('kind', '=', 'payment'), ('state', '=', 'paid'),
+                               ('pos_payment_id', 'in', original_order.payment_ids.ids)])
+        if not paid:
             return {'error': _("No Tabby payment found on the original order.")}
-        if len(set(original.mapped('transaction_id'))) > 1:
+        if len(paid) > 1:
             return {'error': _("The original order was paid with several Tabby payments. Refund it from the Tabby merchant dashboard.")}
-        original = original[0]
-        if original.payment_method_id not in config.payment_method_ids:
+        if paid.payment_method_id not in config.payment_method_ids:
             return {'error': _("The original order was paid with Tabby method %s, which is not enabled on this POS.",
-                               original.payment_method_id.name)}
-        # Cap: the value of the items returned (not more than is left to
-        # return on the original lines), minus other Tabby refunds of this return.
+                               paid.payment_method_id.name)}
+        # Every refund of this payment, from any till, waits for the one before.
+        self._tabby_lock('pos.payment', paid.pos_payment_id.id)
+        refunds = Attempt.search([('kind', '=', 'refund'), ('payment_id', '=', paid.payment_id),
+                                  ('state', 'in', ('pending', 'refunded')), ('pos_payment_id', '=', False)])
+        this_order = refunds.filtered(lambda a: a.order_uuid == data['order_uuid'])
+        # Quantities held by Tabby refunds of other returns not synced yet (one list per return).
+        held = {}
+        for order_uuid in set((refunds - this_order).mapped('order_uuid')):
+            entry = (refunds - this_order).filtered(lambda a: a.order_uuid == order_uuid)[:1]
+            for line_id, qty in json.loads(entry.refund_lines or '{}').items():
+                held[int(line_id)] = held.get(int(line_id), 0.0) + qty
+        # Cap: the value of the items returned, not more than is left on the
+        # original lines after synced returns (drafts and this return excluded)
+        # and returns holding a Tabby refund, minus this return's other refunds.
         value = 0.0
         for line in lines:
-            if line.qty:
-                left = max(line.qty - line.refunded_qty, 0.0)
-                value += line.price_subtotal_incl / line.qty * min(qty_by_line[line.id], left)
-        others = self.env['pos.tabby.attempt'].sudo().search([
-            ('kind', '=', 'refund'), ('order_uuid', '=', data['order_uuid']),
-            ('payment_id', '=', original.transaction_id), ('state', 'in', ('pending', 'refunded')),
-        ])
-        left = currency.round(value - sum(others.mapped('amount')))
+            if not line.qty:
+                continue
+            returned = -sum(line.refund_orderline_ids.filtered(
+                lambda r: r.order_id.state not in ('draft', 'cancel') and r.order_id.uuid != data['order_uuid']).mapped('qty'))
+            left = max(line.qty - returned - held.get(line.id, 0.0), 0.0)
+            value += line.price_subtotal_incl / line.qty * min(qty_by_line[line.id], left)
+        left = currency.round(value - sum(this_order.mapped('amount')))
         if currency.compare_amounts(amount, left) > 0:
             return {'error': _("The refund is more than the value of the returned items: at most %(left)s %(cur)s.",
                                left=self._tabby_format(currency, max(left, 0.0)), cur=currency.name)}
@@ -476,11 +515,12 @@ class PosPaymentMethod(models.Model):
             'kind': 'refund',
             'config_id': config.id,
             'payment_method_id': self.id,
-            'api_method_id': original.payment_method_id.id,
+            'api_method_id': paid.api_method_id.id,
             'currency_id': currency.id,
             'order_uuid': data['order_uuid'],
             'line_uuid': data['line_uuid'],
-            'payment_id': original.transaction_id,
+            'payment_id': paid.payment_id,
+            'refund_lines': json.dumps({str(k): v for k, v in qty_by_line.items()}),
             'reference': "%s-%s" % (data['order_uuid'], data['line_uuid']),
             'amount': amount,
         })
