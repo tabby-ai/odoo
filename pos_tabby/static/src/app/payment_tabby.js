@@ -127,6 +127,12 @@ export class PaymentTabby extends PaymentInterface {
             if (!res?.uncertain) {
                 break;
             }
+            if (!order.payment_ids.includes(line)) {
+                // The cashier force-removed the line: stop sending refunds for it.
+                this.refunding = null;
+                this._showError(_t("The Tabby refund for this line is not confirmed. Check the payment in the Tabby merchant dashboard before refunding this amount another way."));
+                return false;
+            }
             // The refund may have gone through: the line stays locked and the
             // same reference is retried until Tabby gives a definite answer.
             this._warnOnce(this._refundWarning, _t("Tabby did not confirm the refund yet. The till keeps checking; do not refund this amount another way."));
