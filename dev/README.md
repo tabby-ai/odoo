@@ -24,3 +24,7 @@ Setup for a test payment:
 - REJECTED or EXPIRED fails the line; the cashier can retry or use another method.
 - Cancel (cashier button, removing the line, closing the payment screen, timeout) calls `POST /api/v2/checkout/{id}/cancel`; a finalized session is re-read so a paid purchase is not lost.
 - Refund: a POS return paid back with Tabby calls `POST /api/v2/payments/{id}/refunds` against the original order's Tabby payment.
+
+Local databases used in testing: `tabby_pos` (UAE, AED, merchant code AE) and `tabby_pos_sa`
+(KSA, SAR, merchant code SA, created with `--without-demo=all`). The same test key bundle works
+for both; SAR sessions go to api.tabby.sa and checkout.tabby.sa.
