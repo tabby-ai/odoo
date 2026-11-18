@@ -6,7 +6,6 @@ import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 // Tabby POS flow: https://docs.tabby.ai/offline-payment-methods/pos-integration
 const POLL_INTERVAL_MS = 5000; // the docs ask for 5 s
 const POLL_TIMEOUT_MS = 300000; // 300 s, never below 180 s
-const MAX_UNCONFIRMED_CANCELS = 5;
 // Returned by sendPaymentCancel when the payment must not be dropped
 // (paid, or the cancel is not confirmed): Odoo removes or resets the line
 // once this promise resolves, so it never does; the payment request itself
@@ -17,7 +16,8 @@ export class PaymentTabby extends PaymentInterface {
     setup() {
         super.setup(...arguments);
         this.creating = null; // {uuid, cancelled} while the session is being created
-        this.active = null; // {uuid, line, session_id, payment_id, resolve, timer, deadline, closeDialog, lastStatus, cancelFailures}
+        this.refunding = null; // uuid of the line whose refund is in flight
+        this.active = null; // {uuid, line, session_id, payment_id, resolve, timer, deadline, closeDialog, lastStatus, cancelRequested, warned, outcome}
     }
 
     get fastPayments() {
@@ -47,7 +47,9 @@ export class PaymentTabby extends PaymentInterface {
             items: this._orderItems(order),
             buyer: this._buyer(order),
         });
-        this.creating = null;
+        if (this.creating === attempt) {
+            this.creating = null;
+        }
         if (attempt.cancelled) {
             // The cashier cancelled while the session was being created.
             if (res && res.session_id) {
@@ -79,6 +81,9 @@ export class PaymentTabby extends PaymentInterface {
             this.creating.cancelled = true;
             return true;
         }
+        if (this.refunding === uuid) {
+            return KEEP_LINE(); // a refund in flight cannot be cancelled
+        }
         if (this.active && this.active.uuid === uuid) {
             const result = await this._cancelActive(_t("Payment cancelled by the cashier."));
             return result === "cancelled" ? true : KEEP_LINE();
@@ -105,14 +110,21 @@ export class PaymentTabby extends PaymentInterface {
             this._showError(_t("Tabby refunds work from a return of a Tabby-paid order (Actions > Refund)."));
             return false;
         }
+        // Stable per return order and Tabby line position: a retry after a lost
+        // response finds the same refund in Tabby instead of refunding twice;
+        // the server checks the amount of a refund found by reference.
+        const tabbyLines = order.payment_ids.filter(
+            (l) => l.payment_method_id.use_payment_terminal === "tabby" && l.amount < 0
+        );
+        const index = Math.max(0, tabbyLines.indexOf(line));
+        this.refunding = line.uuid;
         const res = await this._rpc("tabby_refund", {
             config_id: this.pos.config.id,
             refunded_line_ids: refundedLineIds,
             amount: line.amount,
-            // Stable per return order: a retry after a lost response finds the
-            // same refund in Tabby instead of refunding twice.
-            reference_id: order.uuid,
+            reference_id: `${order.uuid}-${index + 1}`,
         });
+        this.refunding = null;
         if (!res || res.error) {
             this._showError(res?.error || _t("Tabby refund failed. Please try again."));
             return false;
@@ -137,7 +149,9 @@ export class PaymentTabby extends PaymentInterface {
                 timer: null,
                 closeDialog: null,
                 lastStatus: null,
-                cancelFailures: 0,
+                cancelRequested: false,
+                warned: false,
+                outcome: null, // "paid" or "failed" once finished
             };
             this.active.closeDialog = this.env.services.dialog.add(QRPopup, {
                 title: "Tabby",
@@ -172,15 +186,17 @@ export class PaymentTabby extends PaymentInterface {
         if (!active) {
             return;
         }
-        if (!manual && Date.now() > active.deadline) {
+        if (!manual && Date.now() > active.deadline && !active.cancelRequested) {
             if (active.lastStatus === "AUTHORIZED") {
-                // The customer paid but the capture keeps failing: the sale stands.
-                this._finish(
-                    true,
-                    _t("The customer paid with Tabby, but the capture was not confirmed. Capture payment %s in the Tabby merchant dashboard.", active.payment_id)
+                // Paid but not captured yet: never fail or pass the sale on a guess.
+                this._warnOnce(
+                    active,
+                    _t("The customer paid with Tabby, but the capture is not confirmed yet. Capture payment %s in the Tabby merchant dashboard; the till completes the sale once it sees the capture.", active.payment_id)
                 );
+                this._schedulePollAfterStatus();
                 return;
             }
+            active.cancelRequested = true;
             await this._cancelActive(_t("The customer did not complete the Tabby payment in time."));
             return;
         }
@@ -198,6 +214,8 @@ export class PaymentTabby extends PaymentInterface {
             this._finish(true);
         } else if (res?.outcome === "failed") {
             this._finish(false, this._failureMessage(res.status));
+        } else if (res?.outcome === "partial") {
+            this._finish(false, this._partialMessage(active, res));
         } else if (!manual) {
             this._schedulePoll(); // pending or a transient error: keep polling until the deadline
         }
@@ -221,7 +239,8 @@ export class PaymentTabby extends PaymentInterface {
             payment_id: active.payment_id,
         });
         if (this.active !== active) {
-            return "cancelled";
+            // Finished by a poll meanwhile: report what really happened.
+            return active.outcome === "paid" ? "paid" : "cancelled";
         }
         if (res?.cancelled) {
             this._finish(false, message);
@@ -235,17 +254,26 @@ export class PaymentTabby extends PaymentInterface {
             this._finish(false, this._failureMessage(res.status));
             return "failed";
         }
-        active.cancelFailures += 1;
-        if (active.cancelFailures >= MAX_UNCONFIRMED_CANCELS) {
-            this._finish(
-                false,
-                _t("Tabby did not confirm the cancellation. Check payment %s in the Tabby merchant dashboard before taking another payment.", active.payment_id)
-            );
+        if (res?.outcome === "partial") {
+            this._finish(false, this._partialMessage(active, res));
             return "failed";
         }
-        this._showError(_t("Tabby did not confirm the cancellation yet. The till keeps checking the payment."));
+        // Not confirmed (network error, or authorized but not captured): keep
+        // checking. The Tabby session expires on its own, so polling ends.
+        this._warnOnce(active, _t("Tabby did not confirm the cancellation yet. The till keeps checking payment %s; do not take another payment for this order until it is resolved.", active.payment_id));
         this._schedulePoll();
         return "unconfirmed";
+    }
+
+    _warnOnce(active, message) {
+        if (!active.warned) {
+            active.warned = true;
+            this._showError(message);
+        }
+    }
+
+    _schedulePollAfterStatus() {
+        this._schedulePoll();
     }
 
     _finish(success, message) {
@@ -255,6 +283,7 @@ export class PaymentTabby extends PaymentInterface {
         }
         clearTimeout(active.timer);
         this.active = null;
+        active.outcome = success ? "paid" : "failed";
         active.line.qrPaymentData = null;
         if (active.closeDialog) {
             active.closeDialog();
@@ -266,6 +295,13 @@ export class PaymentTabby extends PaymentInterface {
             this._showError(message);
         }
         active.resolve(success);
+    }
+
+    _partialMessage(active, res) {
+        return _t(
+            "Tabby closed payment %(id)s after collecting only %(captured)s. Resolve it in the Tabby merchant dashboard before taking another payment.",
+            { id: active.payment_id, captured: res.captured }
+        );
     }
 
     _failureMessage(status) {
