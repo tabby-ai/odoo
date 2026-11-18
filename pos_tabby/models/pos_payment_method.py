@@ -101,6 +101,14 @@ class PosPaymentMethod(models.Model):
         module = self.env['ir.module.module'].sudo().search([('name', '=', 'pos_tabby')], limit=1)
         return module.installed_version or '0'
 
+    def _tabby_order_closed(self, data):
+        """A validated order takes no new Tabby payment or refund (replays of its own still answer)."""
+        order = self.env['pos.order'].sudo().search(
+            [('uuid', '=', data['order_uuid']), ('state', 'not in', ('draft', 'cancel'))], limit=1)
+        if order:
+            return {'error': _("Order %s is already validated. Start a new order.", order.pos_reference or order.name)}
+        return None
+
     def _tabby_config_error(self, config):
         if not config.tabby_merchant_code:
             return _("Set the Tabby merchant code in the POS settings first.")
@@ -317,6 +325,10 @@ class PosPaymentMethod(models.Model):
         attempt = self._tabby_open_attempt(config, data, 'payment', amount)
         if isinstance(attempt, dict):
             return attempt
+        if not attempt:
+            closed = self._tabby_order_closed(data)
+            if closed:
+                return closed
         if attempt and currency.compare_amounts(attempt.amount, amount):
             # The cashier changed the amount after the session was created.
             result = self._tabby_cancel(attempt) if attempt.state == 'pending' else {}
@@ -421,7 +433,7 @@ class PosPaymentMethod(models.Model):
         # reference, any failure (even of the lookup) leaves it uncertain.
         sent_before = bool(attempt)
         if not attempt:
-            attempt = self._tabby_new_refund(config, data, amount)
+            attempt = self._tabby_order_closed(data) or self._tabby_new_refund(config, data, amount)
             if isinstance(attempt, dict):
                 return attempt
         api = attempt.api_method_id._tabby_api(currency.name)

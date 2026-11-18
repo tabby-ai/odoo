@@ -41,7 +41,11 @@ class PosOrder(models.Model):
             if attempt and kind == 'payment' and not attempt.pos_payment_id:
                 # Read Tabby again before the first sale it pays: it may have
                 # been refunded in the dashboard since the till saw it paid.
-                method._tabby_refresh(attempt, force=True)
+                refreshed = method._tabby_refresh(attempt, force=True)
+                if refreshed.get('error'):
+                    raise UserError(_(
+                        "%(order)s: Tabby could not be reached to confirm payment %(id)s. Try again in a moment.",
+                        order=self.pos_reference or self.name, id=attempt.payment_id))
             expected = 'paid' if kind == 'payment' else 'refunded'
             if (not attempt or attempt.state != expected or attempt.currency_id != currency
                     or currency.compare_amounts(attempt.amount, abs(payment.amount))

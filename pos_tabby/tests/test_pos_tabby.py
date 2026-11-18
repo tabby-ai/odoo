@@ -450,3 +450,25 @@ class TestPosTabby(TransactionCase):
             'amount_tax': 0, 'amount_total': -100, 'amount_paid': 0, 'amount_return': 0,
         })
         self.assertTrue(self.refund(original.lines, qty=2, amount=-100)['refund_id'])
+
+    def test_sync_refuses_unconfirmed_refresh(self):
+        self.create()
+        self.fake.payment.update(status='CLOSED', captures=[{'amount': '100.00'}])
+        self.assertEqual(self.pm.tabby_payment_status(self.data())['outcome'], 'paid')
+        self.fake.get_status = 503  # Tabby cannot confirm it still holds the money
+        order = self.make_order([{'payment_method_id': self.method.id, 'amount': 100, 'uuid': self.line_uuid}],
+                                self.order_uuid)
+        with self.assertRaises(UserError):
+            order._tabby_check_payments()
+        self.assertFalse(self.attempt().pos_payment_id)
+
+    def test_validated_order_takes_no_new_tabby_line(self):
+        original = self.paid_order()
+        self.refund(original.lines, qty=1, amount=-50)
+        ret = self.make_order([{'payment_method_id': self.method.id, 'amount': -50, 'uuid': self.line_uuid}], self.order_uuid)
+        ret._tabby_check_payments()  # the return synced: its refund is linked
+        ret.state = 'paid'
+        res = self.refund(original.lines, qty=1, amount=-50, line_uuid=new_uuid())
+        self.assertIn('already validated', res['error'])
+        self.assertIn('already validated', self.create()['error'])
+        self.assertEqual(self.fake.count('POST', '/refunds'), 1)
