@@ -26,19 +26,20 @@ class TabbyPosAPI:
     response bodies are never logged: they carry shopper data.
     """
 
-    def __init__(self, secret_key, currency):
+    def __init__(self, secret_key, currency, user_agent="TabbyOdooPOS"):
         if not secret_key:
             raise TabbyError("Tabby secret key is not configured.")
         if currency not in const.CURRENCY_REGION:
             raise TabbyError("Currency %s is not supported by Tabby POS." % currency)
         self.secret_key = secret_key
         self.host = const.CURRENCY_REGION[currency][1]
+        self.user_agent = user_agent
 
     # -- HTTP --------------------------------------------------------------
 
     def _request(self, method, path, payload=None, auth=True, raw=False, allow_redirects=True):
         url = path if path.startswith("https://") else "https://%s%s" % (self.host, path)
-        headers = {"Accept": "application/json"}
+        headers = {"Accept": "application/json", "User-Agent": self.user_agent}
         if auth:
             headers["Authorization"] = "Bearer %s" % self.secret_key
         if payload is not None:
