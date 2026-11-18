@@ -38,8 +38,10 @@ class PosOrder(models.Model):
                 ('kind', '=', kind), ('order_uuid', '=', self.uuid), ('line_uuid', '=', payment.uuid),
                 ('payment_method_id', '=', method.id), ('state', 'not in', RELEASED_STATES),
             ], limit=1)
-            if attempt and kind == 'payment' and attempt.state != 'paid':
-                method._tabby_refresh(attempt)
+            if attempt and kind == 'payment' and not attempt.pos_payment_id:
+                # Read Tabby again before the first sale it pays: it may have
+                # been refunded in the dashboard since the till saw it paid.
+                method._tabby_refresh(attempt, force=True)
             expected = 'paid' if kind == 'payment' else 'refunded'
             if (not attempt or attempt.state != expected or attempt.currency_id != currency
                     or currency.compare_amounts(attempt.amount, abs(payment.amount))
@@ -50,8 +52,10 @@ class PosOrder(models.Model):
                     order=self.pos_reference or self.name, kind=_("payment") if kind == 'payment' else _("refund"),
                     amount=method._tabby_format(currency, abs(payment.amount)), cur=currency.name))
             attempt.write({'pos_payment_id': payment.id})
-            if not payment.transaction_id:
-                payment.transaction_id = attempt.refund_id or attempt.payment_id
+            # The Tabby id on the line is the attempt's, whatever the till sent.
+            canonical = attempt.refund_id if kind == 'refund' else attempt.payment_id
+            if canonical and payment.transaction_id != canonical:
+                payment.transaction_id = canonical
             linked |= attempt
 
         for attempt in Attempt.search([('order_uuid', '=', self.uuid), ('state', 'not in', RELEASED_STATES),
