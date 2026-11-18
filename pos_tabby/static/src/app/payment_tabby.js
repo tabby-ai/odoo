@@ -17,6 +17,7 @@ export class PaymentTabby extends PaymentInterface {
         super.setup(...arguments);
         this.creating = null; // {uuid, cancelled} while the session is being created
         this.refunding = null; // uuid of the line whose refund is in flight
+        this._refundWarning = { warned: false };
         this.active = null; // {uuid, line, session_id, payment_id, resolve, timer, deadline, closeDialog, lastStatus, cancelRequested, warned, outcome}
     }
 
@@ -109,21 +110,29 @@ export class PaymentTabby extends PaymentInterface {
             this._showError(_t("Tabby refunds work from a return of a Tabby-paid order (Actions > Refund)."));
             return false;
         }
-        // Stable per return order and Tabby line position: a retry after a lost
-        // response finds the same refund in Tabby instead of refunding twice;
-        // the server checks the amount of a refund found by reference.
-        const tabbyLines = order.payment_ids.filter(
-            (l) => l.payment_method_id.use_payment_terminal === "tabby" && l.amount < 0
-        );
-        const index = Math.max(0, tabbyLines.indexOf(line));
+        // One reference per refund line, kept across retries of that line: a
+        // retry after a lost response finds the same refund in Tabby instead of
+        // refunding twice (the server also checks the amount).
+        const reference = `${order.uuid}-${line.uuid}`;
         this.refunding = line.uuid;
-        const res = await this._rpc("tabby_refund", {
-            config_id: this.pos.config.id,
-            refunded_line_ids: refundedLineIds,
-            amount: line.amount,
-            reference_id: `${order.uuid}-${index + 1}`,
-        });
+        let res;
+        for (;;) {
+            res = await this._rpc("tabby_refund", {
+                config_id: this.pos.config.id,
+                refunded_line_ids: refundedLineIds,
+                amount: line.amount,
+                reference_id: reference,
+            });
+            if (!res?.uncertain) {
+                break;
+            }
+            // The refund may have gone through: the line stays locked and the
+            // same reference is retried until Tabby gives a definite answer.
+            this._warnOnce(this._refundWarning, _t("Tabby did not confirm the refund yet. The till keeps checking; do not refund this amount another way."));
+            await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        }
         this.refunding = null;
+        this._refundWarning.warned = false;
         if (!res || res.error) {
             this._showError(res?.error || _t("Tabby refund failed. Please try again."));
             return false;
@@ -192,12 +201,12 @@ export class PaymentTabby extends PaymentInterface {
                     active,
                     _t("The customer paid with Tabby, but the capture is not confirmed yet. Capture payment %s in the Tabby merchant dashboard; the till completes the sale once it sees the capture.", active.payment_id)
                 );
-                this._schedulePollAfterStatus();
+                // fall through: keep reading the status (the capture is retried server side)
+            } else {
+                active.cancelRequested = true;
+                await this._cancelActive(_t("The customer did not complete the Tabby payment in time."));
                 return;
             }
-            active.cancelRequested = true;
-            await this._cancelActive(_t("The customer did not complete the Tabby payment in time."));
-            return;
         }
         const res = await this._rpc("tabby_payment_status", {
             config_id: this.pos.config.id,
@@ -269,10 +278,6 @@ export class PaymentTabby extends PaymentInterface {
             active.warned = true;
             this._showError(message);
         }
-    }
-
-    _schedulePollAfterStatus() {
-        this._schedulePoll();
     }
 
     _finish(success, message) {
