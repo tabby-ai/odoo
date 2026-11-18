@@ -16,3 +16,11 @@ Setup for a test payment:
 - Point of Sale > Configuration > Payment Methods: a method with "Integrate with" = Tabby and a `sk_test_` key.
 - Point of Sale > Configuration > Settings > Tabby: merchant code, terminal id, coordinates.
 - Test buyer: otp.success@tabby.ai (reject: otp.rejected@tabby.ai), phone 500000001, OTP 8888.
+
+## What the module does today (18.0)
+
+- Payment: the till creates a session (`POST /api/v2/checkout`), shows the QR (cashier dialog and customer display), polls `GET /api/v2/payments/{id}` every 5 s for up to 300 s.
+- AUTHORIZED payments are captured by the plugin (full amount, reference = payment id); CLOSED counts as paid.
+- REJECTED or EXPIRED fails the line; the cashier can retry or use another method.
+- Cancel (cashier button, removing the line, closing the payment screen, timeout) calls `POST /api/v2/checkout/{id}/cancel`; a finalized session is re-read so a paid purchase is not lost.
+- Refund: a POS return paid back with Tabby calls `POST /api/v2/payments/{id}/refunds` against the original order's Tabby payment.

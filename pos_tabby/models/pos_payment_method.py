@@ -100,7 +100,7 @@ class PosPaymentMethod(models.Model):
         """Create a Tabby session for the selected payment line.
 
         data: {config_id, amount, order_uuid, order_reference, items, buyer}
-        returns {session_id, payment_id, qr_image, expires_at} or {error}
+        returns {session_id, payment_id, qr_image, web_url, expires_at} or {error}
         """
         self.ensure_one()
         self._tabby_check_access()
@@ -127,26 +127,43 @@ class PosPaymentMethod(models.Model):
             'session_id': session.get('id'),
             'payment_id': (session.get('payment') or {}).get('id'),
             'qr_image': 'data:image/png;base64,' + base64.b64encode(qr_png).decode(),
+            'web_url': product.get('web_url'),
             'expires_at': session.get('expires_at'),
         }
 
     def tabby_payment_status(self, data):
-        """data: {config_id, payment_id} -> {status, outcome} or {error}."""
+        """data: {config_id, payment_id} -> {status, outcome} or {error}.
+
+        An AUTHORIZED payment is captured here: the goods leave the shop at
+        once, and Tabby refunds only captured payments. Capture uses the
+        payment id as reference_id, so a repeated poll cannot capture twice.
+        """
         self.ensure_one()
         self._tabby_check_access()
         config = self.env['pos.config'].browse(int(data['config_id'])).exists()
         try:
-            payment = self._tabby_api(config.currency_id.name).get_payment(data['payment_id'])
+            api = self._tabby_api(config.currency_id.name)
+            payment = api.get_payment(data['payment_id'])
         except TabbyError as exc:
             return {'error': str(exc)}
         status = (payment.get('status') or '').upper()
+        result = {'status': status}
+        if status == 'AUTHORIZED' and not payment.get('captures'):
+            try:
+                api.capture(payment['id'], {'amount': payment['amount'], 'reference_id': payment['id']})
+                result['captured'] = True
+            except TabbyError as exc:
+                # The customer has paid; do not fail the sale. The payment stays
+                # AUTHORIZED in Tabby and needs a manual capture.
+                _logger.warning("Tabby POS capture failed for payment %s: %s", payment.get('id'), exc)
+                result['capture_error'] = str(exc)
         if status in const.PAID_STATUSES:
-            outcome = 'paid'
+            result['outcome'] = 'paid'
         elif status in const.FAILED_STATUSES:
-            outcome = 'failed'
+            result['outcome'] = 'failed'
         else:
-            outcome = 'pending'
-        return {'status': status, 'outcome': outcome}
+            result['outcome'] = 'pending'
+        return result
 
     def tabby_cancel_session(self, data):
         """data: {config_id, session_id, payment_id} -> {cancelled} or {status, outcome}.
@@ -166,8 +183,33 @@ class PosPaymentMethod(models.Model):
             return {'error': str(exc)}
 
     def tabby_refund(self, data):
-        """TODO(PLUG-1088): refund from a POS return.
+        """Refund a Tabby payment from a POS return.
 
-        data: {config_id, payment_id, amount, reference_id}
+        data: {config_id, refunded_line_ids, amount, reference_id}
+        The original Tabby payment id is taken from the refunded order's
+        Tabby payment line (pos.payment.transaction_id).
+        returns {refund_id, payment_id} or {error}
         """
-        raise NotImplementedError("Tabby POS refunds are not implemented yet.")
+        self.ensure_one()
+        self._tabby_check_access()
+        config = self.env['pos.config'].browse(int(data['config_id'])).exists()
+        lines = self.env['pos.order.line'].browse([int(i) for i in data.get('refunded_line_ids') or []]).exists()
+        original = lines.order_id.payment_ids.filtered(
+            lambda p: p.payment_method_id.use_payment_terminal == 'tabby' and p.transaction_id and p.amount > 0)
+        if not original:
+            return {'error': _("No Tabby payment found on the original order.")}
+        if len(original.mapped('transaction_id')) > 1:
+            return {'error': _("The returned items were paid with several Tabby payments. Refund them one order at a time.")}
+        payment_id = original[0].transaction_id
+        decimals = config.currency_id.decimal_places or 2
+        amount = "%.*f" % (decimals, abs(float(data['amount'])))
+        try:
+            payment = self._tabby_api(config.currency_id.name).refund(payment_id, {
+                'amount': amount,
+                'reference_id': data['reference_id'],
+                'reason': _("POS return"),
+            })
+        except TabbyError as exc:
+            return {'error': str(exc)}
+        refund = next((r for r in payment.get('refunds') or [] if r.get('reference_id') == data['reference_id']), {})
+        return {'refund_id': refund.get('id'), 'payment_id': payment_id}

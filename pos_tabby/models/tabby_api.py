@@ -78,6 +78,9 @@ class TabbyPosAPI:
     def cancel_session(self, session_id):
         return self._request("POST", "/api/v2/checkout/%s/cancel" % session_id, {})
 
+    def capture(self, payment_id, payload):
+        return self._request("POST", "/api/v2/payments/%s/captures" % payment_id, payload)
+
     def refund(self, payment_id, payload):
         return self._request("POST", "/api/v2/payments/%s/refunds" % payment_id, payload)
 

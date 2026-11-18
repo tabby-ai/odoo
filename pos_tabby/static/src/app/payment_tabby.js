@@ -21,9 +21,11 @@ export class PaymentTabby extends PaymentInterface {
         super.send_payment_request(uuid);
         const order = this.pos.get_order();
         const line = order.payment_ids.find((l) => l.uuid === uuid) || order.get_selected_paymentline();
-        if (!line || line.amount <= 0) {
-            this._showError(_t("Tabby can only take a positive amount."));
+        if (!line || !line.amount) {
             return false;
+        }
+        if (line.amount < 0) {
+            return this._refund(order, line);
         }
         line.set_payment_status("waitingCard");
 
@@ -63,6 +65,31 @@ export class PaymentTabby extends PaymentInterface {
         }
     }
 
+    // -- Refund (POS return) -------------------------------------------------
+
+    async _refund(order, line) {
+        const refundedLineIds = order.lines
+            .map((l) => l.refunded_orderline_id?.id)
+            .filter((id) => Number.isInteger(id));
+        if (!refundedLineIds.length) {
+            this._showError(_t("Tabby refunds work from a return of a Tabby-paid order (Actions > Refund)."));
+            return false;
+        }
+        const res = await this._rpc("tabby_refund", {
+            config_id: this.pos.config.id,
+            refunded_line_ids: refundedLineIds,
+            amount: line.amount,
+            reference_id: `${order.uuid}-${line.uuid}`,
+        });
+        if (!res || res.error) {
+            this._showError(res?.error || _t("Tabby refund failed. Please try again."));
+            return false;
+        }
+        line.transaction_id = res.refund_id || res.payment_id;
+        line.set_receipt_info(_t("Refunded with Tabby\nTabby payment ID:\n%s", res.payment_id));
+        return true;
+    }
+
     // -- Flow ---------------------------------------------------------------
 
     _waitForResult(line, order, session) {
@@ -72,6 +99,7 @@ export class PaymentTabby extends PaymentInterface {
                 line,
                 session_id: session.session_id,
                 payment_id: session.payment_id,
+                web_url: session.web_url,
                 resolve,
                 deadline: Date.now() + POLL_TIMEOUT_MS,
                 timer: null,
@@ -123,7 +151,12 @@ export class PaymentTabby extends PaymentInterface {
         if (res && res.outcome === "paid") {
             this._finish(true);
         } else if (res && res.outcome === "failed") {
-            this._finish(false, _t("Tabby could not approve this purchase (%s). Please use another payment method.", res.status));
+            this._finish(
+                false,
+                res.status === "REJECTED"
+                    ? _t("Tabby could not approve this purchase. Please use another payment method.")
+                    : _t("The Tabby payment was cancelled or has expired. Send a new request or use another payment method.")
+            );
         } else if (!manual) {
             this._schedulePoll(); // pending or a transient error: keep polling until the deadline
         }
@@ -163,7 +196,7 @@ export class PaymentTabby extends PaymentInterface {
             active.closeDialog();
         }
         if (success) {
-            active.line.set_receipt_info(_t("Paid with Tabby\nTabby payment ID: %s", active.payment_id));
+            active.line.set_receipt_info(_t("Paid with Tabby\nTabby payment ID:\n%s", active.payment_id));
         } else if (message) {
             this._showError(message);
         }
