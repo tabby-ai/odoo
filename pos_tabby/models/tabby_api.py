@@ -36,7 +36,7 @@ class TabbyPosAPI:
 
     # -- HTTP --------------------------------------------------------------
 
-    def _request(self, method, path, payload=None, auth=True, raw=False):
+    def _request(self, method, path, payload=None, auth=True, raw=False, allow_redirects=True):
         url = path if path.startswith("https://") else "https://%s%s" % (self.host, path)
         headers = {"Accept": "application/json"}
         if auth:
@@ -48,6 +48,7 @@ class TabbyPosAPI:
                 method, url, headers=headers,
                 data=json.dumps(payload) if payload is not None else None,
                 timeout=const.REQUEST_TIMEOUT,
+                allow_redirects=allow_redirects,
             )
         except requests.exceptions.RequestException as exc:
             _logger.warning("Tabby POS %s %s failed: %s", method, urlparse(url).path, exc.__class__.__name__)
@@ -90,4 +91,5 @@ class TabbyPosAPI:
         host = parsed.hostname or ""
         if parsed.scheme != "https" or not (host.endswith(".tabby.ai") or host.endswith(".tabby.sa")):
             raise TabbyError("Unexpected QR code URL.")
-        return self._request("GET", qr_url, auth=False, raw=True).content
+        # No redirects: a redirect could point the server at an internal address.
+        return self._request("GET", qr_url, auth=False, raw=True, allow_redirects=False).content
