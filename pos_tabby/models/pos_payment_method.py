@@ -262,7 +262,7 @@ class PosPaymentMethod(models.Model):
                 'reason': _("POS return"),
             })
         except TabbyError as exc:
-            # No HTTP status (network) or a 5xx: the refund may have happened.
-            return {'error': str(exc), 'uncertain': exc.status is None or exc.status >= 500}
+            # No HTTP status (network), rate limit or a 5xx: the refund may have happened.
+            return {'error': str(exc), 'uncertain': exc.status is None or exc.status == 429 or exc.status >= 500}
         refund = next((r for r in payment.get('refunds') or [] if r.get('reference_id') == data['reference_id']), {})
         return {'refund_id': refund.get('id'), 'payment_id': payment_id}
