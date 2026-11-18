@@ -185,10 +185,13 @@ class PosPaymentMethod(models.Model):
                 _logger.warning("Tabby POS capture failed for payment %s: %s", payment.get('id'), exc)
                 result['capture_error'] = str(exc)
         fully_captured = amount > 0 and captured >= amount - 0.001
+        result['captured'] = captured
         if status in const.PAID_STATUSES and fully_captured:
             result['outcome'] = 'paid'
+        elif status == 'CLOSED' and captured > 0:
+            result['outcome'] = 'partial'  # closed after a partial capture: needs a manual decision
         elif status == 'CLOSED' or status in const.FAILED_STATUSES:
-            result['outcome'] = 'failed'  # CLOSED without a full capture: voided
+            result['outcome'] = 'failed'  # CLOSED without any capture: voided
         else:
             result['outcome'] = 'pending'  # CREATED, or AUTHORIZED still waiting for capture
         return result
@@ -235,18 +238,24 @@ class PosPaymentMethod(models.Model):
         if len(set(original.mapped('transaction_id'))) > 1:
             return {'error': _("The original order was paid with several Tabby payments. Refund it from the Tabby merchant dashboard.")}
         payment_id = original[0].transaction_id
-        decimals = config.currency_id.decimal_places or 2
+        # The refund runs with the key and currency of the original payment.
+        method = original[0].payment_method_id
+        currency = original[0].pos_order_id.currency_id
+        decimals = currency.decimal_places or 2
         amount = abs(float(data['amount']))
         try:
-            api = self._tabby_api(config.currency_id.name)
+            api = method._tabby_api(currency.name)
             payment = api.get_payment(payment_id)
             existing = next((r for r in payment.get('refunds') or [] if r.get('reference_id') == data['reference_id']), None)
             if existing:
+                if abs(float(existing.get('amount') or 0) - amount) > 0.001:
+                    return {'error': _("A Tabby refund with this reference already exists for %(amount)s. Remove this line and add a new one.",
+                                       amount=existing.get('amount'))}
                 return {'refund_id': existing.get('id'), 'payment_id': payment_id}
             refundable = self._tabby_sum(payment.get('captures')) - self._tabby_sum(payment.get('refunds'))
             if amount > refundable + 0.001:
                 return {'error': _("Only %(left)s %(cur)s is left to refund on this Tabby payment.",
-                                   left="%.*f" % (decimals, refundable), cur=config.currency_id.name)}
+                                   left="%.*f" % (decimals, refundable), cur=currency.name)}
             payment = api.refund(payment_id, {
                 'amount': "%.*f" % (decimals, amount),
                 'reference_id': data['reference_id'],
