@@ -37,13 +37,13 @@ Tabby Pay Later as a payment terminal in Odoo Point of Sale.
   checking every 30 s and releases or completes the line once Tabby shows the outcome.
 
 - An order is set paid only when its Tabby lines are confirmed, whichever path sets it paid. A draft
-  order that holds Tabby money cannot be deleted or cancelled, and a POS session cannot be closed
-  while Tabby holds money that no order of the POS records (a deleted or unsynced order): refund it
-  in the Tabby merchant dashboard and the POS releases it. A POS manager can also mark such a
-  payment reconciled (Tabby Payments > Mark reconciled) once it is recorded outside the POS.
-- Refunds made outside the POS (merchant dashboard) are accepted: a sale refunded there no longer
-  blocks anything, and a POS return of exactly that amount records the existing refund instead of
-  sending a second one.
+  order that holds Tabby money cannot be deleted or cancelled. Closing a POS session never waits for
+  Tabby: open sessions are cancelled, and money Tabby holds without an order (a lost or unsynced
+  order) is written to the session and listed in Tabby Payments. Refund it in the Tabby merchant
+  dashboard, or mark it reconciled (Tabby Payments > Mark reconciled) once it is recorded elsewhere.
+- Refunds made outside the POS (merchant dashboard, disputes) are accepted: a sale refunded there no
+  longer blocks its draft, and before every POS refund the plugin reads the payment from Tabby, so
+  the cap is what Tabby still holds, whoever refunded the rest.
 
 ## Limits
 
