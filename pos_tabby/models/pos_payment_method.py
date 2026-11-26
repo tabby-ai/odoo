@@ -165,7 +165,8 @@ class PosPaymentMethod(models.Model):
             return messages[reason]
         if reason:
             return _("Tabby cannot approve this purchase (%s). Please use another payment method.", reason)
-        return messages['not_available']
+        return _("Tabby did not approve this purchase. Please use another payment method. If every Tabby payment "
+                 "on this POS is declined, ask your manager to check that its merchant code is active in Tabby.")
 
     def _tabby_qr_image(self, api, product):
         """PNG of the session QR: Tabby's own image, else one built from web_url."""
@@ -344,6 +345,10 @@ class PosPaymentMethod(models.Model):
             api = self._tabby_api(currency.name)
             session = api.create_session(self._tabby_session_payload(config, {**data, 'amount': amount}, currency))
         except TabbyError as exc:
+            if exc.status == 401 and 'merchant_code' in str(exc):
+                return {'error': _(
+                    "Merchant code \"%s\" of this POS is not set up in Tabby for this secret key. Ask your manager "
+                    "to check the Tabby settings of this POS.", config.tabby_merchant_code)}
             return {'error': str(exc)}
         session_id = session.get('id')
         payment = session.get('payment') or {}
@@ -465,9 +470,22 @@ class PosPaymentMethod(models.Model):
             if not uncertain:
                 attempt.write({'state': 'failed', 'message': str(exc)[:200]})
             return {'error': str(exc), 'uncertain': uncertain}
-        refund = next((r for r in payment.get('refunds') or [] if r.get('reference_id') == attempt.reference), {})
+        refund = self._tabby_find_refund(payment, attempt)
+        if not refund:
+            try:
+                refund = self._tabby_find_refund(api.get_payment(attempt.payment_id), attempt)
+            except TabbyError:
+                refund = None
+        if not refund:
+            # The refund was sent, but Tabby does not list it: it stays pending
+            # under the same reference until Tabby shows it.
+            return {'error': _("Tabby did not confirm the refund yet."), 'uncertain': True}
         attempt.write({'state': 'refunded', 'refund_id': refund.get('id')})
         return {'refund_id': refund.get('id'), 'payment_id': attempt.payment_id}
+
+    @staticmethod
+    def _tabby_find_refund(payment, attempt):
+        return next((r for r in (payment or {}).get('refunds') or [] if r.get('reference_id') == attempt.reference), None)
 
     def _tabby_new_refund(self, config, data, amount):
         """Check a new refund against the return and record its attempt."""

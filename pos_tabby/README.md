@@ -9,7 +9,10 @@ Tabby Pay Later as a payment terminal in Odoo Point of Sale.
    must be AED (UAE) or SAR (KSA).
 2. Point of Sale > Configuration > Settings > Tabby, per till: merchant code, terminal id,
    terminal latitude and longitude (all required), and how long the till waits for the customer
-   (180 to 900 s, default 300 s).
+   (180 to 900 s, default 300 s). Only a POS manager can change these.
+3. Merchant codes: every till sends its own code, so a merchant with many branches can use one code
+   per branch (MID), not only `AE`/`SA`. Each code must exist in Tabby under the same secret key
+   before the till goes live; an unknown code is refused with a message to the cashier.
 
 ## How it works
 
@@ -32,6 +35,11 @@ Tabby Pay Later as a payment terminal in Odoo Point of Sale.
 - A payment that needs a decision in the dashboard (closed after a partial capture, authorized but
   not captured, or a cancel Tabby did not confirm) stays on its line: the QR closes, the till keeps
   checking every 30 s and releases or completes the line once Tabby shows the outcome.
+
+- An order is set paid only when its Tabby lines are confirmed, whichever path sets it paid. A draft
+  order that holds Tabby money cannot be deleted or cancelled, and a POS session cannot be closed
+  while Tabby holds money that no order of the POS records (a deleted or unsynced order): refund it
+  in the Tabby merchant dashboard and the POS releases it.
 
 ## Limits
 

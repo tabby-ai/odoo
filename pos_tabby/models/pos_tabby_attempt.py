@@ -1,6 +1,6 @@
 import re
 
-from odoo import fields, models
+from odoo import _, fields, models
 
 UUID_PATTERN = re.compile(r'^[\da-fA-F]{8}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{12}$')
 
@@ -73,3 +73,50 @@ class PosTabbyAttempt(models.Model):
             'refund_id': self.refund_id,
             **extra,
         }
+
+    def _tabby_resolve_unlinked(self):
+        """Settle the attempts no POS payment line holds; return those that hold money, or may.
+
+        An open session is cancelled, a payment is read again from Tabby (it
+        may have been refunded in the dashboard), and a refund sent without a
+        confirmed answer is looked up by its reference.
+        """
+        held = self.browse()
+        for attempt in self:
+            if attempt.state in RELEASED_STATES or attempt.pos_payment_id:
+                continue
+            method = attempt.payment_method_id
+            currency = attempt.currency_id
+            if attempt.kind == 'payment':
+                if attempt.state == 'pending':
+                    method._tabby_cancel(attempt)
+                else:
+                    method._tabby_refresh(attempt, force=True)
+                if attempt.state in RELEASED_STATES:
+                    continue
+                if attempt.tabby_status == 'CLOSED' and currency.compare_amounts(attempt.captured - attempt.refunded, 0) <= 0:
+                    continue  # refunded in full in the dashboard
+            elif attempt.state == 'pending':
+                try:
+                    payment = attempt.api_method_id._tabby_api(currency.name).get_payment(attempt.payment_id)
+                except Exception:  # noqa: BLE001 - unknown means it may have moved money
+                    payment = None
+                if payment is not None and not any(r.get('reference_id') == attempt.reference
+                                                   for r in payment.get('refunds') or []):
+                    attempt.write({'state': 'failed', 'message': "not found in Tabby"})
+                    continue
+            held |= attempt
+        return held
+
+    def _tabby_describe(self):
+        parts = []
+        for attempt in self:
+            amount = attempt.payment_method_id._tabby_format(attempt.currency_id, attempt.amount)
+            if attempt.kind == 'payment':
+                parts.append(_("Tabby payment %(id)s of %(amount)s %(cur)s is %(state)s",
+                               id=attempt.payment_id, amount=amount, cur=attempt.currency_id.name,
+                               state=dict(self._fields['state'].selection).get(attempt.state)))
+            else:
+                parts.append(_("a Tabby refund of %(amount)s %(cur)s on payment %(id)s went to the customer or is "
+                               "not confirmed", amount=amount, cur=attempt.currency_id.name, id=attempt.payment_id))
+        return "; ".join(parts)
