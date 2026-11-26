@@ -26,11 +26,24 @@ patch(PaymentScreen.prototype, {
 // charged for a sale that no longer exists.
 patch(PosStore.prototype, {
     async _onBeforeDeleteOrder(order) {
-        const held = (order?.payment_ids || []).some(
-            (line) =>
-                line.payment_method_id?.payment_terminal instanceof PaymentTabby &&
-                ["done", ...TABBY_IN_FLIGHT].includes(line.get_payment_status())
-        );
+        let held = false;
+        for (const line of order?.payment_ids || []) {
+            const terminal = line.payment_method_id?.payment_terminal;
+            if (!(terminal instanceof PaymentTabby) || !["done", ...TABBY_IN_FLIGHT].includes(line.get_payment_status())) {
+                continue;
+            }
+            if (line.amount < 0) {
+                held = true; // a refund that went out stays with its return
+                break;
+            }
+            // The line may look paid while Tabby no longer holds the money
+            // (refunded in the dashboard): ask the server, which reads Tabby.
+            const res = await terminal._rpc("tabby_payment_status", terminal._lineData(order, line));
+            if (res?.outcome !== "failed") {
+                held = true;
+                break;
+            }
+        }
         if (held) {
             this.dialog.add(AlertDialog, {
                 title: _t("Tabby"),

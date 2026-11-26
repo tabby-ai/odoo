@@ -19,6 +19,14 @@ class PosSession(models.Model):
             return {'successful': False, 'message': exc.args[0], 'redirect': False}
         return result
 
+    def update_closing_control_state_session(self, *args, **kwargs):
+        # The closing popup moves the session to closing_control before it
+        # closes it; once there, an order synced from another device finds no
+        # open session. Refuse before that step, while orders can still sync.
+        for session in self:
+            session._tabby_check_unlinked()
+        return super().update_closing_control_state_session(*args, **kwargs)
+
     def _validate_session(self, *args, **kwargs):
         for session in self:
             session._tabby_check_unlinked()
