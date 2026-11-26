@@ -546,26 +546,31 @@ class TestPosTabby(TransactionCase):
         order.action_pos_order_cancel()
         self.assertEqual((order.state, self.attempt().state), ('cancel', 'cancelled'))
 
-    def test_session_close_blocked_by_unlinked_payment(self):
+    def test_session_close_reports_unlinked_payment(self):
         self.create()
         self.fake.payment.update(status='CLOSED', captures=[{'amount': '100.00'}])
         self.pm.tabby_payment_status(self.data())  # paid at the till, then the order was lost
         other = self.make_order([{'payment_method_id': self.cash.id, 'amount': 100}])
-        other.state = 'paid'  # no draft left: only Tabby can stop the close
+        other.state = 'paid'
         session = other.session_id
-        with self.assertRaises(UserError):
-            session._tabby_check_unlinked()
-        res = session._cannot_close_session()
-        self.assertFalse(res['successful'])
-        self.assertIn('cannot be closed', res['message'])
+        self.assertFalse(session._cannot_close_session())  # closing is not blocked
+        held = session._tabby_report_unlinked()
+        self.assertEqual(held, self.attempt())
+        self.assertIn(PAYMENT_ID, session.message_ids[:1].body)
         self.fake.payment['refunds'] = [{'amount': '100.00'}]
-        session._tabby_check_unlinked()  # refunded in the dashboard: released
+        self.assertFalse(session._tabby_report_unlinked())  # refunded in the dashboard: released
         self.assertEqual(self.attempt().state, 'failed')
+
+    def test_session_close_survives_tabby_outage(self):
+        self.captured()
+        session = self.make_order([{'payment_method_id': self.cash.id, 'amount': 100}]).session_id
+        self.fake.get_status = 503
+        session._tabby_report_unlinked()  # no exception: the close goes on
 
     def test_session_close_cancels_open_session(self):
         self.create()
         session = self.make_order([{'payment_method_id': self.cash.id, 'amount': 100}]).session_id
-        session._tabby_check_unlinked()
+        session._tabby_report_unlinked()
         self.assertEqual(self.attempt().state, 'cancelled')
 
     def test_tabby_settings_manager_only(self):
@@ -683,22 +688,15 @@ class TestPosTabby(TransactionCase):
         self.assertTrue(self.attempt()._tabby_resolve_unlinked())
         self.assertEqual(self.attempt().state, 'pending')
 
-    def test_manager_reconcile_unblocks_close(self):
+    def test_manager_reconcile(self):
         self.captured()
-        other = self.make_order([{'payment_method_id': self.cash.id, 'amount': 100}])
-        other.state = 'paid'
-        session = other.session_id
-        with self.assertRaises(UserError):
-            session._tabby_check_unlinked()
-        with self.assertRaises(UserError):
-            session.update_closing_control_state_session('')  # refused before closing_control
-        self.assertNotEqual(session.state, 'closing_control')
+        session = self.make_order([{'payment_method_id': self.cash.id, 'amount': 100}]).session_id
         cashier = self.user_with('tabby_cashier5', 'point_of_sale.group_pos_user')
         with self.assertRaises(AccessError):
             self.attempt().with_user(cashier).action_tabby_reconcile()
         manager = self.user_with('tabby_manager2', 'point_of_sale.group_pos_manager')
         self.attempt().with_user(manager).action_tabby_reconcile()
-        session._tabby_check_unlinked()  # reconciled: no longer blocks
+        self.assertFalse(session._tabby_report_unlinked())  # reconciled: no longer reported
 
     def test_no_new_session_while_closing(self):
         session = self.make_order([{'payment_method_id': self.cash.id, 'amount': 100}]).session_id
@@ -706,16 +704,16 @@ class TestPosTabby(TransactionCase):
         self.assertIn('closing', self.create()['error'])
         self.assertFalse(self.fake.calls)
 
-    def test_refund_made_outside_pos_is_recorded(self):
+    def test_refund_counts_refunds_made_outside_pos(self):
         original = self.paid_order()
-        # The merchant refunded one item in the dashboard; then the till records the return.
-        self.fake.payment['refunds'] = [{'id': 'dash-1', 'amount': '50.00', 'reference_id': None}]
+        # 60 of the 100 were refunded in the dashboard (or by a dispute) after the sale synced.
+        self.fake.payment['refunds'] = [{'id': 'dash-1', 'amount': '60.00', 'reference_id': None}]
         res = self.refund(original.lines, qty=1, amount=-50)
-        self.assertEqual((res['refund_id'], res['external']), ('dash-1', True))
+        self.assertIn('Only 40.00 AED', res['error'])
+        self.assertIn('outside the POS', res['error'])
         self.assertEqual(self.fake.count('POST', '/refunds'), 0)
-        self.assertEqual(self.attempt().state, 'refunded')
-        # A second return cannot take the same dashboard refund again: it is refunded for real.
+        sale = self.env['pos.tabby.attempt'].search([('kind', '=', 'payment'), ('payment_id', '=', PAYMENT_ID)])
+        self.assertEqual((sale.captured, sale.refunded), (100.0, 60.0))  # the sale shows Tabby's state now
+        # What is left can still be refunded from the POS.
         self.order_uuid, self.line_uuid = new_uuid(), new_uuid()
-        res = self.refund(original.lines, qty=1, amount=-50)
-        self.assertNotEqual(res.get('refund_id'), 'dash-1')
-        self.assertEqual(self.fake.count('POST', '/refunds'), 1)
+        self.assertTrue(self.refund(original.lines, qty=1, amount=-40)['refund_id'])

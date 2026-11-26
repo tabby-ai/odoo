@@ -460,21 +460,20 @@ class PosPaymentMethod(models.Model):
             if attempt.refund_posted:
                 # Tabby accepted it already: wait for it to list the reference, never send it again.
                 return {'error': _("Tabby did not confirm the refund yet."), 'uncertain': True}
-            external = None if sent_before else self._tabby_external_refund(payment, attempt, amount)
-            if external:
-                # Refunded outside the POS (merchant dashboard): record it for this
-                # return instead of sending the money a second time.
-                attempt.write({'state': 'refunded', 'refund_id': external.get('id'),
-                               'message': "refund made outside the POS, recorded for this return"})
-                return {'refund_id': external.get('id'), 'payment_id': attempt.payment_id, 'external': True,
-                        'message': _("Tabby already refunded %(amount)s %(cur)s on this payment outside the POS. "
-                                     "It is recorded for this return; nothing was sent again.",
-                                     amount=self._tabby_format(currency, amount), cur=currency.name)}
+            # What Tabby holds now: refunds made anywhere (POS, dashboard, a
+            # dispute) count, so the POS never refunds money Tabby already gave back.
+            outside = self._tabby_sync_sale(payment, attempt)
             refundable = self._tabby_sum(payment.get('captures')) - self._tabby_sum(payment.get('refunds'))
             if currency.compare_amounts(amount, refundable) > 0:
                 attempt.write({'state': 'failed', 'message': "refundable %s" % refundable})
+                if currency.compare_amounts(outside, 0) > 0:
+                    return {'error': _(
+                        "Only %(left)s %(cur)s is left to refund on this Tabby payment: %(outside)s %(cur)s was "
+                        "already refunded outside the POS (merchant dashboard or a dispute).",
+                        left=self._tabby_format(currency, max(refundable, 0.0)), cur=currency.name,
+                        outside=self._tabby_format(currency, outside))}
                 return {'error': _("Only %(left)s %(cur)s is left to refund on this Tabby payment.",
-                                   left=self._tabby_format(currency, refundable), cur=currency.name)}
+                                   left=self._tabby_format(currency, max(refundable, 0.0)), cur=currency.name)}
             payment = api.refund(attempt.payment_id, {
                 'amount': self._tabby_format(currency, amount),
                 'reference_id': attempt.reference,
@@ -500,18 +499,18 @@ class PosPaymentMethod(models.Model):
         attempt.write({'state': 'refunded', 'refund_id': refund.get('id')})
         return {'refund_id': refund.get('id'), 'payment_id': attempt.payment_id}
 
-    def _tabby_external_refund(self, payment, attempt, amount):
-        """A refund of exactly this amount made outside the POS, not recorded by any other return."""
+    def _tabby_sync_sale(self, payment, refund_attempt):
+        """Store on the original sale what Tabby shows now; return the amount refunded outside the POS."""
         Attempt = self.env['pos.tabby.attempt'].sudo()
-        known = Attempt.search([('kind', '=', 'refund'), ('payment_id', '=', attempt.payment_id), ('id', '!=', attempt.id)])
-        references = set(known.mapped('reference'))
-        used = set(known.mapped('refund_id'))
-        for refund in payment.get('refunds') or []:
-            if refund.get('reference_id') in references or refund.get('id') in used:
-                continue
-            if not attempt.currency_id.compare_amounts(float(refund.get('amount') or 0), amount):
-                return refund
-        return None
+        sale = Attempt.search([('kind', '=', 'payment'), ('payment_id', '=', refund_attempt.payment_id),
+                               ('state', '=', 'paid')], limit=1)
+        captured = self._tabby_sum(payment.get('captures'))
+        refunded = self._tabby_sum(payment.get('refunds'))
+        if sale:
+            sale.write({'captured': captured, 'refunded': refunded,
+                        'tabby_status': (payment.get('status') or sale.tabby_status or '').upper()})
+        ours = set(Attempt.search([('kind', '=', 'refund'), ('payment_id', '=', refund_attempt.payment_id)]).mapped('reference'))
+        return sum(float(r.get('amount') or 0) for r in payment.get('refunds') or [] if r.get('reference_id') not in ours)
 
     @staticmethod
     def _tabby_find_refund(payment, attempt):
