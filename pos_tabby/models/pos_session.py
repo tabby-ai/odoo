@@ -7,6 +7,18 @@ from .pos_tabby_attempt import RELEASED_STATES
 class PosSession(models.Model):
     _inherit = 'pos.session'
 
+    def _cannot_close_session(self, *args, **kwargs):
+        # The till shows this message and stays open instead of sending the
+        # cashier to the back end with a generic error.
+        result = super()._cannot_close_session(*args, **kwargs)
+        if result:
+            return result
+        try:
+            self._tabby_check_unlinked()
+        except UserError as exc:
+            return {'successful': False, 'message': exc.args[0], 'redirect': False}
+        return result
+
     def _validate_session(self, *args, **kwargs):
         for session in self:
             session._tabby_check_unlinked()

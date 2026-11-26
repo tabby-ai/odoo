@@ -535,9 +535,14 @@ class TestPosTabby(TransactionCase):
         self.create()
         self.fake.payment.update(status='CLOSED', captures=[{'amount': '100.00'}])
         self.pm.tabby_payment_status(self.data())  # paid at the till, then the order was lost
-        session = self.make_order([{'payment_method_id': self.cash.id, 'amount': 100}]).session_id
+        other = self.make_order([{'payment_method_id': self.cash.id, 'amount': 100}])
+        other.state = 'paid'  # no draft left: only Tabby can stop the close
+        session = other.session_id
         with self.assertRaises(UserError):
             session._tabby_check_unlinked()
+        res = session._cannot_close_session()
+        self.assertFalse(res['successful'])
+        self.assertIn('cannot be closed', res['message'])
         self.fake.payment['refunds'] = [{'amount': '100.00'}]
         session._tabby_check_unlinked()  # refunded in the dashboard: released
         self.assertEqual(self.attempt().state, 'failed')
