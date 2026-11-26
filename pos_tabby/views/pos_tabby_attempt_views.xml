@@ -61,7 +61,7 @@
             <search>
                 <field name="payment_id"/>
                 <field name="order_reference"/>
-                <filter name="unresolved" string="Unresolved" domain="[('state', 'in', ('pending', 'partial')), ('pos_payment_id', '=', False)]"/>
+                <filter name="unresolved" string="Unresolved" domain="[('state', 'not in', ('failed', 'cancelled')), ('pos_payment_id', '=', False)]"/>
                 <group>
                     <filter name="group_state" string="State" context="{'group_by': 'state'}"/>
                 </group>

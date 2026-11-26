@@ -43,11 +43,15 @@ class FakeTabby:
         self.capture_status = 200
         self.refund_status = 200
         self.get_status = 200
+        self.create_status = 200
+        self.refund_listed = True  # False: the refund POST answers without listing the refund
 
     def __call__(self, method, url, headers=None, data=None, timeout=None, allow_redirects=True):
         path = re.sub(r'^https://[^/]+', '', url)
         body = json.loads(data) if data else None
         self.calls.append((method, path, body, headers))
+        if method == 'POST' and path == '/api/v2/checkout' and self.create_status != 200:
+            return FakeResponse(self.create_status, {'error': 'merchant_code not found for this api key'})
         if method == 'POST' and path == '/api/v2/checkout':
             installments = {'web_url': self.web_url}
             if self.qr_url:
@@ -81,6 +85,8 @@ class FakeTabby:
         if method == 'POST' and path == '/api/v2/payments/%s/refunds' % PAYMENT_ID:
             if self.refund_status != 200:
                 return FakeResponse(self.refund_status, {'error': 'refund failed'})
+            if not self.refund_listed:
+                return FakeResponse(200, {'id': PAYMENT_ID, 'status': 'CLOSED'})
             self.payment['refunds'].append({'id': new_uuid(), 'amount': body['amount'], 'reference_id': body['reference_id']})
             return FakeResponse(200, self.payment)
         return FakeResponse(404, {'error': 'not found'})
@@ -327,6 +333,15 @@ class TestPosTabby(TransactionCase):
         self.order_uuid, self.line_uuid = new_uuid(), new_uuid()
         return order
 
+    def make_return(self, original, qty, payments):
+        return self.env['pos.order'].create({
+            'session_id': original.session_id.id, 'uuid': self.order_uuid,
+            'lines': [(0, 0, {'product_id': self.product.id, 'qty': -qty, 'price_unit': 50, 'price_subtotal': -50 * qty,
+                              'price_subtotal_incl': -50 * qty, 'refunded_orderline_id': original.lines.id})],
+            'payment_ids': [(0, 0, p) for p in payments],
+            'amount_tax': 0, 'amount_total': -50 * qty, 'amount_paid': sum(p['amount'] for p in payments), 'amount_return': 0,
+        })
+
     def test_sync_overwrites_transaction_id(self):
         self.create()
         self.fake.payment.update(status='CLOSED', captures=[{'amount': '100.00'}])
@@ -465,10 +480,110 @@ class TestPosTabby(TransactionCase):
     def test_validated_order_takes_no_new_tabby_line(self):
         original = self.paid_order()
         self.refund(original.lines, qty=1, amount=-50)
-        ret = self.make_order([{'payment_method_id': self.method.id, 'amount': -50, 'uuid': self.line_uuid}], self.order_uuid)
+        ret = self.make_return(original, qty=1, payments=[{'payment_method_id': self.method.id, 'amount': -50,
+                                                           'uuid': self.line_uuid}])
         ret._tabby_check_payments()  # the return synced: its refund is linked
         ret.state = 'paid'
         res = self.refund(original.lines, qty=1, amount=-50, line_uuid=new_uuid())
         self.assertIn('already validated', res['error'])
         self.assertIn('already validated', self.create()['error'])
         self.assertEqual(self.fake.count('POST', '/refunds'), 1)
+
+    # -- Final review (26.11) --------------------------------------------------
+
+    def user_with(self, login, *xmlids):
+        groups = [(6, 0, [self.env.ref(x).id for x in ('base.group_user',) + xmlids])]
+        field = 'groups_id' if 'groups_id' in self.env['res.users']._fields else 'group_ids'
+        return self.env['res.users'].create({'name': login, 'login': login, field: groups})
+
+    def test_paid_transition_checks_tabby(self):
+        # A draft order with a Tabby line no Tabby payment confirmed cannot be set paid directly.
+        order = self.make_order([{'payment_method_id': self.method.id, 'amount': 100, 'uuid': self.line_uuid}],
+                                self.order_uuid)
+        self.assertEqual(order.state, 'draft')
+        cashier = self.user_with('tabby_cashier', 'point_of_sale.group_pos_user')
+        with self.assertRaises(UserError):
+            order.with_user(cashier).action_pos_order_paid()
+        self.assertEqual(order.state, 'draft')
+        self.create()
+        self.fake.payment.update(status='AUTHORIZED')
+        order.action_pos_order_paid()
+        self.assertEqual(order.state, 'paid')
+        self.assertEqual(self.attempt().pos_payment_id, order.payment_ids)
+
+    def test_cancel_draft_holding_tabby(self):
+        self.create()
+        self.fake.payment.update(status='CLOSED', captures=[{'amount': '100.00'}])
+        self.pm.tabby_payment_status(self.data())
+        order = self.make_order([{'payment_method_id': self.method.id, 'amount': 100, 'uuid': self.line_uuid}],
+                                self.order_uuid)
+        with self.assertRaises(UserError):
+            order.action_pos_order_cancel()
+        self.assertEqual(order.state, 'draft')
+        # Refunded in the dashboard: no money held, the draft can go.
+        self.fake.payment['refunds'] = [{'amount': '100.00'}]
+        order.action_pos_order_cancel()
+        self.assertEqual(order.state, 'cancel')
+
+    def test_cancel_draft_with_open_session_cancels_it(self):
+        self.create()
+        order = self.make_order([{'payment_method_id': self.cash.id, 'amount': 100}], self.order_uuid)
+        order.action_pos_order_cancel()
+        self.assertEqual((order.state, self.attempt().state), ('cancel', 'cancelled'))
+
+    def test_session_close_blocked_by_unlinked_payment(self):
+        self.create()
+        self.fake.payment.update(status='CLOSED', captures=[{'amount': '100.00'}])
+        self.pm.tabby_payment_status(self.data())  # paid at the till, then the order was lost
+        session = self.make_order([{'payment_method_id': self.cash.id, 'amount': 100}]).session_id
+        with self.assertRaises(UserError):
+            session._tabby_check_unlinked()
+        self.fake.payment['refunds'] = [{'amount': '100.00'}]
+        session._tabby_check_unlinked()  # refunded in the dashboard: released
+        self.assertEqual(self.attempt().state, 'failed')
+
+    def test_session_close_cancels_open_session(self):
+        self.create()
+        session = self.make_order([{'payment_method_id': self.cash.id, 'amount': 100}]).session_id
+        session._tabby_check_unlinked()
+        self.assertEqual(self.attempt().state, 'cancelled')
+
+    def test_tabby_settings_manager_only(self):
+        cashier = self.user_with('tabby_cashier2', 'point_of_sale.group_pos_user')
+        with self.assertRaises(AccessError):
+            self.config.with_user(cashier).write({'tabby_merchant_code': 'other-branch'})
+        self.assertEqual(self.config.tabby_merchant_code, 'ae')
+        self.config.with_user(cashier).write({'name': 'Renamed till'})  # other fields as before
+        manager = self.user_with('tabby_manager', 'point_of_sale.group_pos_manager')
+        self.config.with_user(manager).write({'tabby_merchant_code': '  BRANCH-17 '})
+        self.assertEqual(self.config.tabby_merchant_code, 'BRANCH-17')
+
+    def test_unknown_merchant_code_message(self):
+        self.fake.create_status = 401
+        error = self.create()['error']
+        self.assertIn('Merchant code "ae"', error)
+        self.assertIn('not set up in Tabby', error)
+        self.assertFalse(self.attempt())
+
+    def test_rejection_without_reason_mentions_setup(self):
+        self.fake.session_status = 'rejected'
+        self.assertIn('merchant code is active', self.create()['error'])
+
+    def test_refund_without_listed_reference_stays_pending(self):
+        original = self.paid_order()
+        self.fake.refund_listed = False
+        res = self.refund(original.lines)
+        self.assertTrue(res['uncertain'])
+        self.assertEqual(self.attempt().state, 'pending')
+        self.fake.refund_listed = True
+        self.assertTrue(self.refund(original.lines)['refund_id'])  # the same reference is retried
+        self.assertEqual(self.attempt().state, 'refunded')
+
+    def test_sync_refuses_refund_beyond_return(self):
+        original = self.paid_order()
+        self.assertTrue(self.refund(original.lines, qty=2, amount=-100)['refund_id'])
+        # The return that syncs gives back only one item.
+        ret = self.make_return(original, qty=1, payments=[{'payment_method_id': self.method.id, 'amount': -100,
+                                                           'uuid': self.line_uuid}])
+        with self.assertRaises(UserError):
+            ret._tabby_check_payments()

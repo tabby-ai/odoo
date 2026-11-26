@@ -21,6 +21,7 @@ export class PaymentTabby extends PaymentInterface {
         super.setup(...arguments);
         this.creating = null; // {uuid, cancelled} while the session is being created
         this.refunding = null; // uuid of the line whose refund is in flight
+        this.resuming = null; // uuid of the line being resumed after a reload
         this._refundWarning = { warned: false };
         this.active = null; // the payment being followed, see _track
         // The terminal sits in a reactive store, so what this.creating and
@@ -127,15 +128,16 @@ export class PaymentTabby extends PaymentInterface {
      */
     resumeLine(order, line) {
         const uuid = line.uuid;
-        if (this.creating?.uuid === uuid || this.active?.uuid === uuid || this.refunding === uuid) {
-            return;
-        }
-        if (this.creating || this.active || this.refunding) {
+        if (this.creating || this.active || this.refunding || this.resuming) {
             return; // one Tabby request at a time; this line is resumed once the till is free
         }
+        // Claimed before the first await: a second mount of the payment
+        // screen must not start another follow-up of the same line.
+        this.resuming = uuid;
         this.pos.paymentTerminalInProgress = true;
         const done = line.amount < 0 ? this._refund(order, line) : this._resume(order, line);
         done.then((success) => {
+            this.resuming = null;
             line.handlePaymentResponse(success);
             this.pos.paymentTerminalInProgress = false;
         });

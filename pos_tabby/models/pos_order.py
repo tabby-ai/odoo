@@ -1,4 +1,6 @@
-from odoo import _, api, models
+import json
+
+from odoo import _, models
 from odoo.exceptions import UserError
 
 from .pos_tabby_attempt import RELEASED_STATES
@@ -7,13 +9,25 @@ from .pos_tabby_attempt import RELEASED_STATES
 class PosOrder(models.Model):
     _inherit = 'pos.order'
 
-    @api.model
-    def _process_order(self, order, existing_order):
-        order_id = super()._process_order(order, existing_order)
-        pos_order = self.browse(order_id)
-        if pos_order.state not in ('draft', 'cancel'):
-            pos_order._tabby_check_payments()
-        return order_id
+    def action_pos_order_paid(self):
+        # Every way to a paid order (sync from the till, the backend payment
+        # wizard, a direct call on a draft) goes through here.
+        for order in self:
+            order._tabby_check_payments()
+        return super().action_pos_order_paid()
+
+    def action_pos_order_cancel(self):
+        # A draft order that holds Tabby money cannot be cancelled: the
+        # customer would stay charged for a sale that no longer exists.
+        for order in self.filtered(lambda o: o.state == 'draft'):
+            held = self.env['pos.tabby.attempt'].sudo().search(
+                [('order_uuid', '=', order.uuid)])._tabby_resolve_unlinked()
+            if held:
+                raise UserError(_(
+                    "%(order)s cannot be cancelled: %(what)s. Finish the order, or refund the payment in the "
+                    "Tabby merchant dashboard first.",
+                    order=order.pos_reference or order.name, what=held._tabby_describe()))
+        return super().action_pos_order_cancel()
 
     def _tabby_check_payments(self):
         """Accept a paid order only when Tabby confirms its Tabby lines.
@@ -55,6 +69,8 @@ class PosOrder(models.Model):
                     "Send the line to Tabby again, or remove it and use another payment method.",
                     order=self.pos_reference or self.name, kind=_("payment") if kind == 'payment' else _("refund"),
                     amount=method._tabby_format(currency, abs(payment.amount)), cur=currency.name))
+            if kind == 'refund':
+                self._tabby_check_refund_lines(attempt)
             attempt.write({'pos_payment_id': payment.id})
             # The Tabby id on the line is the attempt's, whatever the till sent.
             canonical = attempt.refund_id if kind == 'refund' else attempt.payment_id
@@ -62,38 +78,22 @@ class PosOrder(models.Model):
                 payment.transaction_id = canonical
             linked |= attempt
 
-        for attempt in Attempt.search([('order_uuid', '=', self.uuid), ('state', 'not in', RELEASED_STATES),
-                                       ('id', 'not in', linked.ids)]):
-            method = attempt.payment_method_id
-            if attempt.kind == 'payment':
-                if attempt.state == 'pending':
-                    method._tabby_cancel(attempt)
-                else:
-                    method._tabby_refresh(attempt, force=True)
-                if attempt.state in RELEASED_STATES:
-                    continue
-                if attempt.tabby_status == 'CLOSED' and currency.compare_amounts(attempt.captured - attempt.refunded, 0) <= 0:
-                    continue  # refunded in full in the dashboard
-                raise UserError(_(
-                    "%(order)s: Tabby payment %(id)s of %(amount)s %(cur)s is %(state)s, but the order has no "
-                    "Tabby line for it. Add a Tabby line of that amount, or refund the payment in the Tabby "
-                    "merchant dashboard.",
-                    order=self.pos_reference or self.name, id=attempt.payment_id,
-                    amount=method._tabby_format(currency, attempt.amount), cur=currency.name,
-                    state=dict(attempt._fields['state'].selection).get(attempt.state)))
-            if attempt.state == 'pending':
-                # A refund sent without a confirmed answer: did the money move?
-                try:
-                    payment = attempt.api_method_id._tabby_api(currency.name).get_payment(attempt.payment_id)
-                except Exception:  # noqa: BLE001 - unknown means the order must wait
-                    payment = None
-                if payment is not None and not any(r.get('reference_id') == attempt.reference
-                                                   for r in payment.get('refunds') or []):
-                    attempt.write({'state': 'failed', 'message': "not found in Tabby at order sync"})
-                    continue
+        held = Attempt.search([('order_uuid', '=', self.uuid), ('id', 'not in', linked.ids)])._tabby_resolve_unlinked()
+        if held:
             raise UserError(_(
-                "%(order)s: a Tabby refund of %(amount)s %(cur)s on payment %(id)s went to the customer or is not "
-                "confirmed, but the order has no Tabby line for it. Add a Tabby refund line of that amount, or check "
-                "the payment in the Tabby merchant dashboard.",
-                order=self.pos_reference or self.name, amount=method._tabby_format(currency, attempt.amount),
-                cur=currency.name, id=attempt.payment_id))
+                "%(order)s: %(what)s, but the order has no Tabby line for it. Add a Tabby line of that amount, "
+                "or resolve it in the Tabby merchant dashboard.",
+                order=self.pos_reference or self.name, what=held._tabby_describe()))
+
+    def _tabby_check_refund_lines(self, attempt):
+        """A Tabby refund may not cover more items than this return gives back."""
+        returned = {}
+        for line in self.lines.filtered('refunded_orderline_id'):
+            key = line.refunded_orderline_id.id
+            returned[key] = returned.get(key, 0.0) + abs(line.qty)
+        for line_id, qty in json.loads(attempt.refund_lines or '{}').items():
+            if qty > returned.get(int(line_id), 0.0) + 1e-6:
+                raise UserError(_(
+                    "%(order)s: Tabby refund %(id)s covers more items than this return gives back. Check the "
+                    "refund in the Tabby merchant dashboard.",
+                    order=self.pos_reference or self.name, id=attempt.payment_id))
