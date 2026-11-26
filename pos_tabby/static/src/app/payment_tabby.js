@@ -202,6 +202,9 @@ export class PaymentTabby extends PaymentInterface {
         }
         line.transaction_id = res.refund_id || res.payment_id;
         line.setReceiptInfo(_t("Refunded with Tabby\nTabby payment ID:\n%s", res.payment_id));
+        if (res.message) {
+            this._showError(res.message); // refunded outside the POS: recorded, nothing sent
+        }
         return true;
     }
 

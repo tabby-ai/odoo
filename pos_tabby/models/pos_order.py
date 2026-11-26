@@ -16,18 +16,27 @@ class PosOrder(models.Model):
             order._tabby_check_payments()
         return super().action_pos_order_paid()
 
-    def action_pos_order_cancel(self):
-        # A draft order that holds Tabby money cannot be cancelled: the
-        # customer would stay charged for a sale that no longer exists.
-        for order in self.filtered(lambda o: o.state == 'draft'):
-            held = self.env['pos.tabby.attempt'].sudo().search(
-                [('order_uuid', '=', order.uuid)])._tabby_resolve_unlinked()
-            if held:
-                raise UserError(_(
-                    "%(order)s cannot be cancelled: %(what)s. Finish the order, or refund the payment in the "
-                    "Tabby merchant dashboard first.",
-                    order=order.pos_reference or order.name, what=held._tabby_describe()))
-        return super().action_pos_order_cancel()
+    def write(self, vals):
+        # A direct write of the state (an RPC from the till) skips
+        # action_pos_order_paid: check the Tabby lines here too. No context
+        # flag skips it (a client can send any context); a second check of an
+        # order is cheap, its attempts are linked and Tabby is not called again.
+        if vals.get('state') in ('paid', 'done', 'invoiced'):
+            for order in self.filtered(lambda o: o.state == 'draft'):
+                order._tabby_check_payments()
+        elif vals.get('state') == 'cancel':
+            # Cancel from the till, the back end or remove_from_ui: a draft that
+            # holds Tabby money cannot go, the customer would stay charged.
+            self.check_access('write')  # before any call to Tabby
+            for order in self.filtered(lambda o: o.state == 'draft'):
+                held = self.env['pos.tabby.attempt'].sudo().search(
+                    [('order_uuid', '=', order.uuid)])._tabby_resolve_unlinked()
+                if held:
+                    raise UserError(_(
+                        "%(order)s cannot be cancelled: %(what)s. Finish the order, or refund the payment in the "
+                        "Tabby merchant dashboard first.",
+                        order=order.pos_reference or order.name, what=held._tabby_describe()))
+        return super().write(vals)
 
     def _tabby_check_payments(self):
         """Accept a paid order only when Tabby confirms its Tabby lines.
@@ -51,6 +60,8 @@ class PosOrder(models.Model):
             attempt = Attempt.search([
                 ('kind', '=', kind), ('order_uuid', '=', self.uuid), ('line_uuid', '=', payment.uuid),
                 ('payment_method_id', '=', method.id), ('state', 'not in', RELEASED_STATES),
+                # The session was created with this POS's merchant code, not another branch's.
+                ('config_id', '=', self.config_id.id),
             ], limit=1)
             if attempt and kind == 'payment' and not attempt.pos_payment_id:
                 # Read Tabby again before the first sale it pays: it may have
@@ -78,6 +89,16 @@ class PosOrder(models.Model):
                 payment.transaction_id = canonical
             linked |= attempt
 
+        # Tabby pays at most the order: never more, handed back as cash change.
+        tabby = self.payment_ids.filtered(lambda p: p.payment_method_id.use_payment_terminal == 'tabby')
+        tabby_total = abs(sum(tabby.mapped('amount')))
+        if tabby and currency.compare_amounts(tabby_total, abs(self.amount_total)) > 0:
+            raise UserError(_(
+                "%(order)s: the Tabby lines (%(tabby)s %(cur)s) are more than the order total. Tabby cannot pay "
+                "change: set the Tabby line to the amount it pays.",
+                order=self.pos_reference or self.name, tabby=self.payment_ids[:1].payment_method_id._tabby_format(
+                    currency, tabby_total), cur=currency.name))
+
         held = Attempt.search([('order_uuid', '=', self.uuid), ('id', 'not in', linked.ids)])._tabby_resolve_unlinked()
         if held:
             raise UserError(_(
@@ -86,7 +107,8 @@ class PosOrder(models.Model):
                 order=self.pos_reference or self.name, what=held._tabby_describe()))
 
     def _tabby_check_refund_lines(self, attempt):
-        """A Tabby refund may not cover more items than this return gives back."""
+        """A Tabby refund may not cover more items than this return gives back,
+        nor may all returns of an item (in any tender) give back more than was sold."""
         returned = {}
         for line in self.lines.filtered('refunded_orderline_id'):
             key = line.refunded_orderline_id.id
@@ -97,3 +119,13 @@ class PosOrder(models.Model):
                     "%(order)s: Tabby refund %(id)s covers more items than this return gives back. Check the "
                     "refund in the Tabby merchant dashboard.",
                     order=self.pos_reference or self.name, id=attempt.payment_id))
+        for original in self.lines.refunded_orderline_id:
+            others = original.refund_orderline_ids.filtered(
+                lambda r: r.order_id != self and r.order_id.state not in ('draft', 'cancel'))
+            total = sum(abs(q) for q in others.mapped('qty')) + returned.get(original.id, 0.0)
+            if total > original.qty + 1e-6:
+                raise UserError(_(
+                    "%(order)s: %(product)s was already returned on another order. Check Tabby refund %(id)s in "
+                    "the Tabby merchant dashboard.",
+                    order=self.pos_reference or self.name, product=original.full_product_name or original.product_id.display_name,
+                    id=attempt.payment_id))

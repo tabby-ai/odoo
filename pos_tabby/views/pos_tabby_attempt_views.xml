@@ -26,6 +26,12 @@
         <field name="model">pos.tabby.attempt</field>
         <field name="arch" type="xml">
             <form create="0" edit="0" delete="0">
+                <header>
+                    <button name="action_tabby_reconcile" type="object" string="Mark reconciled"
+                            groups="point_of_sale.group_pos_manager"
+                            invisible="pos_payment_id or reconciled or state in ('failed', 'cancelled')"
+                            confirm="Use this only after checking the payment in the Tabby merchant dashboard and recording it outside the POS. It stops blocking the session close."/>
+                </header>
                 <sheet>
                     <group>
                         <group>
@@ -47,6 +53,8 @@
                             <field name="captured"/>
                             <field name="refunded"/>
                             <field name="message"/>
+                            <field name="refund_posted"/>
+                            <field name="reconciled"/>
                         </group>
                     </group>
                 </sheet>
@@ -61,7 +69,7 @@
             <search>
                 <field name="payment_id"/>
                 <field name="order_reference"/>
-                <filter name="unresolved" string="Unresolved" domain="[('state', 'not in', ('failed', 'cancelled')), ('pos_payment_id', '=', False)]"/>
+                <filter name="unresolved" string="Unresolved" domain="[('state', 'not in', ('failed', 'cancelled')), ('pos_payment_id', '=', False), ('reconciled', '=', False)]"/>
                 <group>
                     <filter name="group_state" string="State" context="{'group_by': 'state'}"/>
                 </group>

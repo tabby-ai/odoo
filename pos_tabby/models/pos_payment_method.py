@@ -317,6 +317,9 @@ class PosPaymentMethod(models.Model):
         error = self._tabby_config_error(config)
         if error:
             return {'error': error}
+        if config.current_session_id.state == 'closing_control':
+            # The session is closing: a new QR could take money after the close check.
+            return {'error': _("This POS session is closing. Open a new session to take a Tabby payment.")}
         currency = config.currency_id
         amount = currency.round(float(data.get('amount') or 0))
         if currency.compare_amounts(amount, 0) <= 0:
@@ -454,6 +457,19 @@ class PosPaymentMethod(models.Model):
                         "the Tabby merchant dashboard; do not refund this line again.",
                         amount=existing.get('amount'), id=attempt.payment_id)}
                 return {'refund_id': existing.get('id'), 'payment_id': attempt.payment_id}
+            if attempt.refund_posted:
+                # Tabby accepted it already: wait for it to list the reference, never send it again.
+                return {'error': _("Tabby did not confirm the refund yet."), 'uncertain': True}
+            external = None if sent_before else self._tabby_external_refund(payment, attempt, amount)
+            if external:
+                # Refunded outside the POS (merchant dashboard): record it for this
+                # return instead of sending the money a second time.
+                attempt.write({'state': 'refunded', 'refund_id': external.get('id'),
+                               'message': "refund made outside the POS, recorded for this return"})
+                return {'refund_id': external.get('id'), 'payment_id': attempt.payment_id, 'external': True,
+                        'message': _("Tabby already refunded %(amount)s %(cur)s on this payment outside the POS. "
+                                     "It is recorded for this return; nothing was sent again.",
+                                     amount=self._tabby_format(currency, amount), cur=currency.name)}
             refundable = self._tabby_sum(payment.get('captures')) - self._tabby_sum(payment.get('refunds'))
             if currency.compare_amounts(amount, refundable) > 0:
                 attempt.write({'state': 'failed', 'message': "refundable %s" % refundable})
@@ -479,9 +495,23 @@ class PosPaymentMethod(models.Model):
         if not refund:
             # The refund was sent, but Tabby does not list it: it stays pending
             # under the same reference until Tabby shows it.
+            attempt.write({'refund_posted': True})
             return {'error': _("Tabby did not confirm the refund yet."), 'uncertain': True}
         attempt.write({'state': 'refunded', 'refund_id': refund.get('id')})
         return {'refund_id': refund.get('id'), 'payment_id': attempt.payment_id}
+
+    def _tabby_external_refund(self, payment, attempt, amount):
+        """A refund of exactly this amount made outside the POS, not recorded by any other return."""
+        Attempt = self.env['pos.tabby.attempt'].sudo()
+        known = Attempt.search([('kind', '=', 'refund'), ('payment_id', '=', attempt.payment_id), ('id', '!=', attempt.id)])
+        references = set(known.mapped('reference'))
+        used = set(known.mapped('refund_id'))
+        for refund in payment.get('refunds') or []:
+            if refund.get('reference_id') in references or refund.get('id') in used:
+                continue
+            if not attempt.currency_id.compare_amounts(float(refund.get('amount') or 0), amount):
+                return refund
+        return None
 
     @staticmethod
     def _tabby_find_refund(payment, attempt):

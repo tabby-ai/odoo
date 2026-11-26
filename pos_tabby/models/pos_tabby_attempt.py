@@ -1,6 +1,7 @@
 import re
 
 from odoo import _, fields, models
+from odoo.exceptions import AccessError
 
 UUID_PATTERN = re.compile(r'^[\da-fA-F]{8}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{12}$')
 
@@ -56,6 +57,9 @@ class PosTabbyAttempt(models.Model):
     web_url = fields.Char(readonly=True)
     qr_image = fields.Text(readonly=True)
     message = fields.Char(readonly=True)
+    refund_posted = fields.Boolean(readonly=True, help="Tabby accepted the refund request; it waits for Tabby to list it.")
+    reconciled = fields.Boolean(readonly=True, help="A POS manager checked it in the Tabby merchant dashboard and "
+                                                    "recorded it outside the POS: it no longer blocks closing.")
     pos_payment_id = fields.Many2one('pos.payment', readonly=True, index=True, ondelete='set null',
                                      help="The POS payment line this attempt was recorded on.")
 
@@ -83,7 +87,7 @@ class PosTabbyAttempt(models.Model):
         """
         held = self.browse()
         for attempt in self:
-            if attempt.state in RELEASED_STATES or attempt.pos_payment_id:
+            if attempt.state in RELEASED_STATES or attempt.pos_payment_id or attempt.reconciled:
                 continue
             method = attempt.payment_method_id
             currency = attempt.currency_id
@@ -96,7 +100,8 @@ class PosTabbyAttempt(models.Model):
                     continue
                 if attempt.tabby_status == 'CLOSED' and currency.compare_amounts(attempt.captured - attempt.refunded, 0) <= 0:
                     continue  # refunded in full in the dashboard
-            elif attempt.state == 'pending':
+            elif attempt.state == 'pending' and not attempt.refund_posted:
+                # Never released while Tabby accepted the request: it may list it later.
                 try:
                     payment = attempt.api_method_id._tabby_api(currency.name).get_payment(attempt.payment_id)
                 except Exception:  # noqa: BLE001 - unknown means it may have moved money
@@ -120,3 +125,13 @@ class PosTabbyAttempt(models.Model):
                 parts.append(_("a Tabby refund of %(amount)s %(cur)s on payment %(id)s went to the customer or is "
                                "not confirmed", amount=amount, cur=attempt.currency_id.name, id=attempt.payment_id))
         return "; ".join(parts)
+
+    def action_tabby_reconcile(self):
+        """Manager: the money is accounted for outside the POS (checked in the Tabby dashboard)."""
+        if not self.env.user.has_group('point_of_sale.group_pos_manager'):
+            raise AccessError(_("Only a Point of Sale manager can reconcile a Tabby payment."))
+        for attempt in self.sudo():
+            if attempt.pos_payment_id or attempt.state in RELEASED_STATES:
+                continue
+            attempt.write({'reconciled': True, 'message': _("Reconciled by %s", self.env.user.name)})
+        return True
