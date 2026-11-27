@@ -751,6 +751,14 @@ class TestPosTabby(TransactionCase):
         self.assertEqual(self.method._tabby_phone(currency, '(+971) 50-123-4567'), '+971501234567')
         sar = self.env.ref('base.SAR')
         self.assertEqual(self.method._tabby_phone(sar, '0551234567'), '+966551234567')
+        # Arabic-Indic and Persian digits from an Arabic keyboard, also mixed with ASCII.
+        self.assertEqual(self.method._tabby_phone(currency, '٠٥٠١٢٣٤٥٦٧'), '+971501234567')
+        self.assertEqual(self.method._tabby_phone(currency, '050١٢٣٤٥٦٧'), '+971501234567')
+        self.assertEqual(self.method._tabby_phone(currency, '+٩٧١ ٥٠ ١٢٣ ٤٥٦٧'), '+971501234567')
+        self.assertEqual(self.method._tabby_phone(sar, '۰۵۵۱۲۳۴۵۶۷'), '+966551234567')
+        self.assertIs(self.method._tabby_phone(currency, '٠٤١٢٣٤٥٦٧٨'), False)
+        # Not a Tabby till currency: no KeyError, the phone is ignored and the API refuses the currency.
+        self.assertIsNone(self.method._tabby_phone(self.env.ref('base.USD'), '0501234567'))
 
     def test_no_phone_no_link(self):
         res = self.create()

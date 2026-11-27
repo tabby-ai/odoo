@@ -163,13 +163,17 @@ class PosPaymentMethod(models.Model):
             return None
         if not isinstance(raw, str):
             return False  # the till always sends text
-        text = raw.strip()
+        # Arabic-Indic / Persian digits from an Arabic keyboard -> ASCII before any check.
+        text = ''.join(str(int(c)) if c.isdecimal() else c for c in raw.strip())
         if not text:
             return None
+        region = const.CURRENCY_REGION.get(currency.name)
+        if not region:
+            return None  # not a Tabby till currency: the API call refuses it with its own message
         digits = re.sub(r'\D', '', text)
         if not digits or re.search(r'[^\d\s+\-().]', text) or text.count('+') > 1:
             return False
-        code = {'AE': '971', 'SA': '966'}[const.CURRENCY_REGION[currency.name][0]]
+        code = {'AE': '971', 'SA': '966'}[region[0]]
         international = '+' in text or digits.startswith('00')
         if digits.startswith('00'):
             digits = digits[2:]
