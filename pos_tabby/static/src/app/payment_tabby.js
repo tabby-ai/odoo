@@ -54,6 +54,8 @@ export class PaymentTabby extends PaymentInterface {
             order_reference: order.pos_reference || (order.name && order.name !== "/" ? order.name : order.uuid),
             items: this._orderItems(order),
             buyer: this._buyer(order),
+            // Optional mobile typed on the line: Tabby also texts the payment link to it.
+            phone: line.tabby_phone || "",
         });
         if (this.creating?.seq === attempt.seq) {
             this.creating = null;
@@ -70,6 +72,7 @@ export class PaymentTabby extends PaymentInterface {
             this._showError(res?.error || _t("Tabby is unavailable. Please use another payment method."));
             return false;
         }
+        this._notifyLink(res);
         return this._track(order, line, res);
     }
 
@@ -449,6 +452,14 @@ export class PaymentTabby extends PaymentInterface {
                 error: _t("Could not reach the Odoo server. Check the connection and try again."),
                 uncertain: true,
             }));
+    }
+
+    _notifyLink(res) {
+        if (res.sms === "sent") {
+            this.env.services.notification.add(_t("Payment link sent by SMS to %s.", res.sms_to), { type: "success" });
+        } else if (res.sms === "failed") {
+            this.env.services.notification.add(res.sms_error, { type: "warning", sticky: true });
+        }
     }
 
     _showError(message) {

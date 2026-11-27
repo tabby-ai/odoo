@@ -44,6 +44,7 @@ class FakeTabby:
         self.refund_status = 200
         self.get_status = 200
         self.create_status = 200
+        self.link_status = 200
         self.refund_listed = True  # False: the refund POST answers without listing the refund
 
     def __call__(self, method, url, headers=None, data=None, timeout=None, allow_redirects=True):
@@ -67,6 +68,10 @@ class FakeTabby:
         if path.endswith('/hpp_link_qr'):
             status = self.qr_status.pop(0) if len(self.qr_status) > 1 else self.qr_status[0]
             return FakeResponse(status, content=QR_PNG if status == 200 else b"")
+        if method == 'POST' and path == '/api/v2/checkout/%s/send_hpp_link' % SESSION_ID:
+            if self.link_status != 200:
+                return FakeResponse(self.link_status, {'error': 'bad_data', 'message': 'product is not chosen'})
+            return FakeResponse(200, {'status': 'ok'})
         if method == 'POST' and path == '/api/v2/checkout/%s/cancel' % SESSION_ID:
             if self.cancel_status != 200:
                 return FakeResponse(self.cancel_status, {'error': 'session is finalized'})
@@ -143,8 +148,9 @@ class TestPosTabby(TransactionCase):
         return {'config_id': self.config.id, 'order_uuid': self.order_uuid, 'line_uuid': self.line_uuid,
                 'line_uuids': [self.line_uuid], **extra}
 
-    def create(self, amount=100.0):
-        return self.pm.tabby_create_session(self.data(amount=amount, order_reference='Order 1', items=[], buyer={}))
+    def create(self, amount=100.0, phone=None):
+        return self.pm.tabby_create_session(self.data(amount=amount, order_reference='Order 1', items=[], buyer={},
+                                                      **({'phone': phone} if phone is not None else {})))
 
     def attempt(self):
         return self.env['pos.tabby.attempt'].search([('line_uuid', '=', self.line_uuid)])
@@ -702,3 +708,49 @@ class TestPosTabby(TransactionCase):
         # What is left can still be refunded from the POS.
         self.order_uuid, self.line_uuid = new_uuid(), new_uuid()
         self.assertTrue(self.refund(original.lines, qty=1, amount=-40)['refund_id'])
+
+    # -- Payment link by SMS ---------------------------------------------------
+
+    def test_phone_sends_link(self):
+        res = self.create(phone='050 123 4567')
+        self.assertEqual(res['sms'], 'sent')
+        self.assertEqual(res['sms_to'], '+971***567')
+        self.assertTrue(res['qr_image'])
+        sent = next(c for c in self.fake.calls if c[1] == '/api/v2/checkout')
+        self.assertEqual(sent[2]['payment']['buyer']['phone'], '+971501234567')
+        self.assertEqual(self.fake.count('POST', '/send_hpp_link'), 1)
+        self.assertTrue(self.attempt().link_sent)
+        # Resuming the line does not text the customer again.
+        self.assertTrue(self.create(phone='050 123 4567')['resumed'])
+        self.assertEqual(self.fake.count('POST', '/send_hpp_link'), 1)
+
+    def test_phone_formats(self):
+        currency = self.config.currency_id
+        for raw in ('501234567', '0501234567', '+971501234567', '00971 50 123 4567', '971-50-123-4567'):
+            self.assertEqual(self.method._tabby_phone(currency, raw), '+971501234567', raw)
+        for raw in ('12345', '0412345678', '+966501234567x1', '9715012345678', '+508551234', '00508551234',
+                    '+966501234567', '(+508) 41 23 45', '+', 'abc', '50x1234567', '++971501234567'):
+            self.assertIs(self.method._tabby_phone(currency, raw), False, raw)
+        self.assertIsNone(self.method._tabby_phone(currency, '  '))
+        self.assertIs(self.method._tabby_phone(currency, 501234567), False)
+        self.assertEqual(self.method._tabby_phone(currency, '(+971) 50-123-4567'), '+971501234567')
+        sar = self.env.ref('base.SAR')
+        self.assertEqual(self.method._tabby_phone(sar, '0551234567'), '+966551234567')
+
+    def test_no_phone_no_link(self):
+        res = self.create()
+        self.assertNotIn('sms', res)
+        self.assertFalse(self.fake.count('POST', '/send_hpp_link'))
+
+    def test_invalid_phone_creates_nothing(self):
+        self.assertIn('mobile number', self.create(phone='12345')['error'])
+        self.assertFalse(self.fake.calls)
+
+    def test_link_failure_keeps_qr(self):
+        self.fake.link_status = 400
+        res = self.create(phone='501234567')
+        self.assertEqual(res['sms'], 'failed')
+        self.assertIn('scan the QR code', res['sms_error'])
+        self.assertTrue(res['qr_image'])
+        self.assertEqual(self.attempt().state, 'pending')
+        self.assertFalse(self.attempt().link_sent)

@@ -83,6 +83,10 @@ class TabbyPosAPI:
     def capture(self, payment_id, payload):
         return self._request("POST", "/api/v2/payments/%s/captures" % payment_id, payload)
 
+    def send_hpp_link(self, session_id):
+        """Text the checkout link to payment.buyer.phone of the session (Custom Payment Links)."""
+        return self._request("POST", "/api/v2/checkout/%s/send_hpp_link" % session_id, {})
+
     def refund(self, payment_id, payload):
         return self._request("POST", "/api/v2/payments/%s/refunds" % payment_id, payload)
 
