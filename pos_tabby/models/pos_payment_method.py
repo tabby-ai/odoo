@@ -153,6 +153,48 @@ class PosPaymentMethod(models.Model):
             'payment': payment,
         }
 
+    def _tabby_phone(self, currency, raw):
+        """The customer mobile typed at the till in +<country code> form.
+
+        Returns None when nothing was typed, False when it is not a mobile
+        number of the till's country (UAE or KSA: 5 and 8 more digits).
+        """
+        if raw in (None, False, ''):
+            return None
+        if not isinstance(raw, str):
+            return False  # the till always sends text
+        text = raw.strip()
+        if not text:
+            return None
+        digits = re.sub(r'\D', '', text)
+        if not digits or re.search(r'[^\d\s+\-().]', text) or text.count('+') > 1:
+            return False
+        code = {'AE': '971', 'SA': '966'}[const.CURRENCY_REGION[currency.name][0]]
+        international = '+' in text or digits.startswith('00')
+        if digits.startswith('00'):
+            digits = digits[2:]
+        if international:
+            # An explicit country code must be the till's: never rewrite +508... into +971...
+            if not digits.startswith(code):
+                return False
+            local = digits[len(code):]
+        else:
+            local = digits[len(code):] if digits.startswith(code) else digits.lstrip('0')
+        if not re.fullmatch(r'5\d{8}', local):
+            return False
+        return '+%s%s' % (code, local)
+
+    def _tabby_send_link(self, api, attempt, phone):
+        """Text the checkout link to the customer; the QR keeps working if it fails."""
+        try:
+            api.send_hpp_link(attempt.session_id)
+        except TabbyError as exc:
+            _logger.warning("Tabby POS send_hpp_link failed for payment %s: %s", attempt.payment_id, exc)
+            return {'sms': 'failed', 'sms_error': _(
+                "The payment link could not be sent by SMS (%s). The customer can scan the QR code.", exc)}
+        attempt.link_sent = True
+        return {'sms': 'sent', 'sms_to': '%s***%s' % (phone[:4], phone[-3:])}
+
     def _tabby_rejection_message(self, session):
         product = ((session.get('configuration') or {}).get('products') or {}).get('installments') or {}
         reason = product.get('rejection_reason')
@@ -310,13 +352,22 @@ class PosPaymentMethod(models.Model):
     def tabby_create_session(self, data):
         """Create a Tabby session for a payment line, or continue its open one.
 
-        data: {config_id, order_uuid, line_uuid, line_uuids, amount, order_reference, items, buyer}
-        returns the attempt ({state, payment_id, qr_image, ...}) or {error}
+        data: {config_id, order_uuid, line_uuid, line_uuids, amount, order_reference, items, buyer, phone}
+        phone (optional): a customer mobile typed at the till; it goes to
+        payment.buyer.phone and Tabby texts the checkout link to it, next to the QR.
+        returns the attempt ({state, payment_id, qr_image, sms, ...}) or {error}
         """
         config = self._tabby_context(data)
         error = self._tabby_config_error(config)
         if error:
             return {'error': error}
+        phone = self._tabby_phone(config.currency_id, data.get('phone'))
+        if phone is False:
+            return {'error': _("Enter the customer's %s mobile number (for example 50 123 4567), or leave the "
+                               "phone empty to show only the QR code.",
+                               _("UAE") if config.currency_id.name == 'AED' else _("KSA"))}
+        if phone:
+            data = {**data, 'buyer': {**(data.get('buyer') or {}), 'phone': phone}}
         if config.current_session_id.state == 'closing_control':
             # The session is closing: a new QR could take money after the close check.
             return {'error': _("This POS session is closing. Open a new session to take a Tabby payment.")}
@@ -384,7 +435,8 @@ class PosPaymentMethod(models.Model):
                 "Tabby could not show a QR code for payment %s and did not confirm its cancellation. "
                 "The till keeps checking it.", attempt.payment_id))
         attempt.qr_image = 'data:image/png;base64,' + base64.b64encode(qr_png).decode()
-        return attempt._view()
+        # Sent once, after the QR is ready: Tabby answers 429 to a second send on the same session.
+        return attempt._view(**(self._tabby_send_link(api, attempt, phone) if phone else {}))
 
     def tabby_resume(self, data):
         """data: {config_id, order_uuid, line_uuid} -> the line's payment attempt, after a till reload."""

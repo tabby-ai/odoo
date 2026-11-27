@@ -53,6 +53,7 @@
                             <field name="captured"/>
                             <field name="refunded"/>
                             <field name="message"/>
+                            <field name="link_sent"/>
                             <field name="refund_posted"/>
                             <field name="reconciled"/>
                         </group>

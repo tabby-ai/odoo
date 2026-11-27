@@ -57,6 +57,7 @@ class PosTabbyAttempt(models.Model):
     web_url = fields.Char(readonly=True)
     qr_image = fields.Text(readonly=True)
     message = fields.Char(readonly=True)
+    link_sent = fields.Boolean(readonly=True, help="Tabby texted the checkout link to the phone typed at the till.")
     refund_posted = fields.Boolean(readonly=True, help="Tabby accepted the refund request; it waits for Tabby to list it.")
     reconciled = fields.Boolean(readonly=True, help="A POS manager checked it in the Tabby merchant dashboard and "
                                                     "recorded it outside the POS: it no longer blocks closing.")
