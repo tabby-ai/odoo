@@ -1,0 +1,28 @@
+# Local Odoo 18 for developing pos_tabby.
+#   docker compose -f dev/docker-compose.yml up -d
+#   open http://localhost:8069  (admin / admin)
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    volumes:
+      - odoo-db:/var/lib/postgresql/data
+  odoo:
+    image: odoo:18.0
+    depends_on: [db]
+    ports:
+      - "127.0.0.1:8069:8069"
+    environment:
+      HOST: db
+      USER: odoo
+      PASSWORD: odoo
+    volumes:
+      - ..:/mnt/extra-addons:ro
+      - odoo-data:/var/lib/odoo
+    command: ["--dev=reload,xml", "--log-level=info"]
+volumes:
+  odoo-db:
+  odoo-data:

@@ -1,0 +1,138 @@
+import re
+
+from odoo import _, fields, models
+from odoo.exceptions import AccessError
+
+UUID_PATTERN = re.compile(r'^[\da-fA-F]{8}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{12}$')
+
+# States that hold no money and need nothing more from the till.
+RELEASED_STATES = ('failed', 'cancelled')
+
+
+def is_uuid(value):
+    return isinstance(value, str) and bool(UUID_PATTERN.match(value))
+
+
+class PosTabbyAttempt(models.Model):
+    """One Tabby payment or refund started from a till.
+
+    The till only ever sends its own order and payment line uuids; every
+    Tabby id (session, payment, refund) is read from this record, so a till
+    cannot act on a payment it did not create. The record also survives a
+    reload of the till, so a pending payment can be resumed or cancelled.
+    """
+    _name = 'pos.tabby.attempt'
+    _description = "Tabby POS attempt"
+    _order = 'id desc'
+    _rec_name = 'payment_id'
+
+    kind = fields.Selection([('payment', "Payment"), ('refund', "Refund")], required=True, default='payment')
+    state = fields.Selection([
+        ('pending', "Pending"),  # session open, payment authorized but not captured, or refund not confirmed
+        ('paid', "Paid"),  # captured in full
+        ('partial', "Partially captured"),  # closed with only part of the amount captured
+        ('failed', "Failed"),  # rejected, expired, voided, or a refund Tabby declined
+        ('cancelled', "Cancelled"),
+        ('refunded', "Refunded"),
+    ], required=True, default='pending', index=True)
+    config_id = fields.Many2one('pos.config', required=True, readonly=True, index=True)
+    payment_method_id = fields.Many2one('pos.payment.method', required=True, readonly=True)
+    api_method_id = fields.Many2one('pos.payment.method', required=True, readonly=True,
+                                    help="Method whose key runs the Tabby calls: the original payment's method for a refund.")
+    company_id = fields.Many2one(related='config_id.company_id', store=True)
+    currency_id = fields.Many2one('res.currency', required=True, readonly=True)
+    order_uuid = fields.Char(required=True, readonly=True, index=True)
+    line_uuid = fields.Char(required=True, index=True)
+    order_reference = fields.Char(readonly=True)
+    session_id = fields.Char(readonly=True, index=True)
+    payment_id = fields.Char(string="Tabby Payment ID", required=True, readonly=True, index=True,
+                             help="The Tabby payment; for a refund, the original payment refunded.")
+    reference = fields.Char(readonly=True, help="reference_id sent with the refund.")
+    refund_id = fields.Char(readonly=True)
+    refund_lines = fields.Text(readonly=True, help="Original order line id -> quantity returned (refunds).")
+    amount = fields.Monetary(readonly=True)
+    captured = fields.Monetary(readonly=True)
+    refunded = fields.Monetary(readonly=True)
+    tabby_status = fields.Char(readonly=True)
+    web_url = fields.Char(readonly=True)
+    qr_image = fields.Text(readonly=True)
+    message = fields.Char(readonly=True)
+    link_sent = fields.Boolean(readonly=True, help="Tabby texted the checkout link to the phone typed at the till.")
+    refund_posted = fields.Boolean(readonly=True, help="Tabby accepted the refund request; it waits for Tabby to list it.")
+    reconciled = fields.Boolean(readonly=True, help="A POS manager checked it in the Tabby merchant dashboard and "
+                                                    "recorded it outside the POS: it no longer blocks closing.")
+    pos_payment_id = fields.Many2one('pos.payment', readonly=True, index=True, ondelete='set null',
+                                     help="The POS payment line this attempt was recorded on.")
+
+    def _view(self, **extra):
+        self.ensure_one()
+        return {
+            'state': self.state,
+            'session_id': self.session_id,
+            'payment_id': self.payment_id,
+            'amount': self.amount,
+            'captured': self.captured,
+            'status': self.tabby_status,
+            'qr_image': self.qr_image if self.state == 'pending' else False,
+            'web_url': self.web_url,
+            'refund_id': self.refund_id,
+            **extra,
+        }
+
+    def _tabby_resolve_unlinked(self):
+        """Settle the attempts no POS payment line holds; return those that hold money, or may.
+
+        An open session is cancelled, a payment is read again from Tabby (it
+        may have been refunded in the dashboard), and a refund sent without a
+        confirmed answer is looked up by its reference.
+        """
+        held = self.browse()
+        for attempt in self:
+            if attempt.state in RELEASED_STATES or attempt.pos_payment_id or attempt.reconciled:
+                continue
+            method = attempt.payment_method_id
+            currency = attempt.currency_id
+            if attempt.kind == 'payment':
+                if attempt.state == 'pending':
+                    method._tabby_cancel(attempt)
+                else:
+                    method._tabby_refresh(attempt, force=True)
+                if attempt.state in RELEASED_STATES:
+                    continue
+                if attempt.tabby_status == 'CLOSED' and currency.compare_amounts(attempt.captured - attempt.refunded, 0) <= 0:
+                    continue  # refunded in full in the dashboard
+            elif attempt.state == 'pending' and not attempt.refund_posted:
+                # Never released while Tabby accepted the request: it may list it later.
+                try:
+                    payment = attempt.api_method_id._tabby_api(currency.name).get_payment(attempt.payment_id)
+                except Exception:  # noqa: BLE001 - unknown means it may have moved money
+                    payment = None
+                if payment is not None and not any(r.get('reference_id') == attempt.reference
+                                                   for r in payment.get('refunds') or []):
+                    attempt.write({'state': 'failed', 'message': "not found in Tabby"})
+                    continue
+            held |= attempt
+        return held
+
+    def _tabby_describe(self):
+        parts = []
+        for attempt in self:
+            amount = attempt.payment_method_id._tabby_format(attempt.currency_id, attempt.amount)
+            if attempt.kind == 'payment':
+                parts.append(_("Tabby payment %(id)s of %(amount)s %(cur)s is %(state)s",
+                               id=attempt.payment_id, amount=amount, cur=attempt.currency_id.name,
+                               state=dict(self._fields['state'].selection).get(attempt.state)))
+            else:
+                parts.append(_("a Tabby refund of %(amount)s %(cur)s on payment %(id)s went to the customer or is "
+                               "not confirmed", amount=amount, cur=attempt.currency_id.name, id=attempt.payment_id))
+        return "; ".join(parts)
+
+    def action_tabby_reconcile(self):
+        """Manager: the money is accounted for outside the POS (checked in the Tabby dashboard)."""
+        if not self.env.user.has_group('point_of_sale.group_pos_manager'):
+            raise AccessError(_("Only a Point of Sale manager can reconcile a Tabby payment."))
+        for attempt in self.sudo():
+            if attempt.pos_payment_id or attempt.state in RELEASED_STATES:
+                continue
+            attempt.write({'reconciled': True, 'message': _("Reconciled by %s", self.env.user.name)})
+        return True

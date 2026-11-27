@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="pos_tabby_attempt_view_list" model="ir.ui.view">
+        <field name="name">pos.tabby.attempt.list</field>
+        <field name="model">pos.tabby.attempt</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0" delete="0" decoration-warning="state in ('pending', 'partial')" decoration-muted="state in ('failed', 'cancelled')">
+                <field name="create_date"/>
+                <field name="config_id"/>
+                <field name="kind"/>
+                <field name="order_reference"/>
+                <field name="payment_id"/>
+                <field name="amount"/>
+                <field name="captured"/>
+                <field name="refunded"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="tabby_status"/>
+                <field name="state"/>
+                <field name="pos_payment_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="pos_tabby_attempt_view_form" model="ir.ui.view">
+        <field name="name">pos.tabby.attempt.form</field>
+        <field name="model">pos.tabby.attempt</field>
+        <field name="arch" type="xml">
+            <form create="0" edit="0" delete="0">
+                <header>
+                    <button name="action_tabby_reconcile" type="object" string="Mark reconciled"
+                            groups="point_of_sale.group_pos_manager"
+                            invisible="pos_payment_id or reconciled or state in ('failed', 'cancelled')"
+                            confirm="Use this only after checking the payment in the Tabby merchant dashboard and recording it outside the POS. It stops blocking the session close."/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="kind"/>
+                            <field name="state"/>
+                            <field name="tabby_status"/>
+                            <field name="config_id"/>
+                            <field name="payment_method_id"/>
+                            <field name="order_reference"/>
+                            <field name="pos_payment_id"/>
+                        </group>
+                        <group>
+                            <field name="payment_id"/>
+                            <field name="session_id"/>
+                            <field name="reference"/>
+                            <field name="refund_id"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="amount"/>
+                            <field name="captured"/>
+                            <field name="refunded"/>
+                            <field name="message"/>
+                            <field name="link_sent"/>
+                            <field name="refund_posted"/>
+                            <field name="reconciled"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="pos_tabby_attempt_view_search" model="ir.ui.view">
+        <field name="name">pos.tabby.attempt.search</field>
+        <field name="model">pos.tabby.attempt</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="payment_id"/>
+                <field name="order_reference"/>
+                <filter name="unresolved" string="Unresolved" domain="[('state', 'not in', ('failed', 'cancelled')), ('pos_payment_id', '=', False), ('reconciled', '=', False)]"/>
+                <group>
+                    <filter name="group_state" string="State" context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="pos_tabby_attempt_action" model="ir.actions.act_window">
+        <field name="name">Tabby Payments</field>
+        <field name="res_model">pos.tabby.attempt</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_unresolved': 1}</field>
+    </record>
+
+    <menuitem id="pos_tabby_attempt_menu" name="Tabby Payments" parent="point_of_sale.menu_point_of_sale"
+              action="pos_tabby_attempt_action" groups="point_of_sale.group_pos_manager" sequence="40"/>
+</odoo>
